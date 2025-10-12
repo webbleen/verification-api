@@ -81,7 +81,6 @@ type CreateProjectRequest struct {
 	TemplateID   string `json:"template_id"`
 	Description  string `json:"description"`
 	ContactEmail string `json:"contact_email"`
-	WebhookURL   string `json:"webhook_url"`
 	RateLimit    int    `json:"rate_limit"`
 	MaxRequests  int    `json:"max_requests"`
 }
@@ -113,7 +112,6 @@ func CreateProject(c *gin.Context) {
 		TemplateID:   req.TemplateID,
 		Description:  req.Description,
 		ContactEmail: req.ContactEmail,
-		WebhookURL:   req.WebhookURL,
 		RateLimit:    req.RateLimit,
 		MaxRequests:  req.MaxRequests,
 		IsActive:     true,
@@ -142,7 +140,6 @@ type UpdateProjectRequest struct {
 	TemplateID   string `json:"template_id"`
 	Description  string `json:"description"`
 	ContactEmail string `json:"contact_email"`
-	WebhookURL   string `json:"webhook_url"`
 	RateLimit    int    `json:"rate_limit"`
 	MaxRequests  int    `json:"max_requests"`
 	IsActive     *bool  `json:"is_active"`
@@ -184,9 +181,6 @@ func UpdateProject(c *gin.Context) {
 	}
 	if req.ContactEmail != "" {
 		updates["contact_email"] = req.ContactEmail
-	}
-	if req.WebhookURL != "" {
-		updates["webhook_url"] = req.WebhookURL
 	}
 	if req.RateLimit > 0 {
 		updates["rate_limit"] = req.RateLimit

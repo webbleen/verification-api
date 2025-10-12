@@ -285,7 +285,6 @@ verification-api/
 - `template_id` - Email template ID (optional)
 - `description` - Project description
 - `contact_email` - Contact email
-- `webhook_url` - Webhook URL (optional)
 - `rate_limit` - Rate limit per hour
 - `max_requests` - Max requests per day
 - `is_active` - Project status
