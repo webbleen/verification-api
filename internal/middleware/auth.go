@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"time"
 
+	"auth-mail/internal/response"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -32,20 +34,14 @@ func ProjectAuthMiddleware() gin.HandlerFunc {
 
 		// Validate project ID and API key
 		if projectID == "" || apiKey == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "Missing project_id or api_key",
-			})
+			c.JSON(http.StatusUnauthorized, response.Error(http.StatusUnauthorized, "Missing project_id or api_key"))
 			c.Abort()
 			return
 		}
 
 		// Validate project using database
 		if !ProjectService.ValidateProject(projectID, apiKey) {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "Invalid project_id or api_key",
-			})
+			c.JSON(http.StatusUnauthorized, response.Error(http.StatusUnauthorized, "Invalid project_id or api_key"))
 			c.Abort()
 			return
 		}

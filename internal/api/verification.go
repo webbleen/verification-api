@@ -122,7 +122,7 @@ func SendVerificationCode(c *gin.Context) {
 
 	// Send email
 	brevoService := services.NewBrevoService()
-	if err := brevoService.SendVerificationCodeEmail(projectID.(string), req.Email, code); err != nil {
+	if err := brevoService.SendVerificationCodeEmail(projectID.(string), req.Email, code, req.Language); err != nil {
 		// Log failed email attempt
 		verificationService.LogVerificationAttempt(projectID.(string), req.Email, "send", false, clientIP, userAgent, "Failed to send email: "+err.Error())
 

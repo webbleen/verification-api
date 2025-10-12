@@ -20,7 +20,6 @@ type Project struct {
 	ProjectID    string `json:"project_id" gorm:"uniqueIndex;not null"`
 	ProjectName  string `json:"project_name" gorm:"not null"`
 	APIKey       string `json:"api_key" gorm:"uniqueIndex;not null"`
-	FromEmail    string `json:"from_email" gorm:"not null"`
 	FromName     string `json:"from_name" gorm:"not null"`
 	TemplateID   string `json:"template_id"`
 	CustomConfig string `json:"custom_config" gorm:"type:text"` // JSON string

@@ -77,7 +77,6 @@ type CreateProjectRequest struct {
 	ProjectID    string `json:"project_id" binding:"required"`
 	ProjectName  string `json:"project_name" binding:"required"`
 	APIKey       string `json:"api_key" binding:"required"`
-	FromEmail    string `json:"from_email" binding:"required,email"`
 	FromName     string `json:"from_name" binding:"required"`
 	TemplateID   string `json:"template_id"`
 	Description  string `json:"description"`
@@ -110,7 +109,6 @@ func CreateProject(c *gin.Context) {
 		ProjectID:    req.ProjectID,
 		ProjectName:  req.ProjectName,
 		APIKey:       req.APIKey,
-		FromEmail:    req.FromEmail,
 		FromName:     req.FromName,
 		TemplateID:   req.TemplateID,
 		Description:  req.Description,
@@ -140,7 +138,6 @@ func CreateProject(c *gin.Context) {
 // UpdateProjectRequest represents update project request
 type UpdateProjectRequest struct {
 	ProjectName  string `json:"project_name"`
-	FromEmail    string `json:"from_email"`
 	FromName     string `json:"from_name"`
 	TemplateID   string `json:"template_id"`
 	Description  string `json:"description"`
@@ -175,9 +172,6 @@ func UpdateProject(c *gin.Context) {
 	updates := make(map[string]interface{})
 	if req.ProjectName != "" {
 		updates["project_name"] = req.ProjectName
-	}
-	if req.FromEmail != "" {
-		updates["from_email"] = req.FromEmail
 	}
 	if req.FromName != "" {
 		updates["from_name"] = req.FromName

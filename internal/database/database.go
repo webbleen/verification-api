@@ -118,7 +118,6 @@ func insertDefaultData() error {
 		ProjectID:   "default",
 		ProjectName: "Default Project",
 		APIKey:      "default-api-key",
-		FromEmail:   config.AppConfig.BrevoFromEmail,
 		FromName:    config.AppConfig.BrevoFromName,
 		IsActive:    true,
 		Description: "Default project for testing and development",
