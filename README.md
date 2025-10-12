@@ -15,6 +15,7 @@ A standalone verification code API service based on Gin framework and Brevo emai
 - 📊 **Project Management** - Full CRUD operations for project management
 - 🗄️ **Database Support** - PostgreSQL + Redis dual storage architecture
 - 📈 **Statistics & Monitoring** - Comprehensive analytics and monitoring
+- 🌍 **Multi-Language Support** - Email content in 8 languages (EN, ZH-CN, ZH-TW, JA, KO, ES, FR, DE)
 
 ## Quick Start
 
@@ -22,8 +23,8 @@ A standalone verification code API service based on Gin framework and Brevo emai
 
 ```bash
 # Clone the project
-git clone <your-repo>
-cd auth-mail
+git clone https://github.com/webbleen/verification-api.git
+cd verification-api
 
 # Install dependencies
 go mod tidy
@@ -47,7 +48,7 @@ docker-compose up -d
 
 # Or start individually
 # PostgreSQL
-docker run -d --name postgres -p 5432:5432 -e POSTGRES_DB=auth_mail -e POSTGRES_USER=auth_mail -e POSTGRES_PASSWORD=auth_mail_password postgres:15-alpine
+docker run -d --name postgres -p 5432:5432 -e POSTGRES_DB=verification_api -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:15-alpine
 
 # Redis
 docker run -d --name redis -p 6379:6379 redis:7-alpine
@@ -88,6 +89,32 @@ The service supports both PostgreSQL (production) and SQLite (development):
 - **Production**: Set `DATABASE_URL` to your PostgreSQL connection string
 - **Development**: Leave `DATABASE_URL` empty to use SQLite
 
+### Multi-Language Support
+
+The service supports 8 languages for email content:
+
+- **English (en)** - Default language
+- **Chinese Simplified (zh-CN)** - 简体中文
+- **Chinese Traditional (zh-TW)** - 繁體中文
+- **Japanese (ja)** - 日本語
+- **Korean (ko)** - 한국어
+- **Spanish (es)** - Español
+- **French (fr)** - Français
+- **German (de)** - Deutsch
+
+Specify the language in the `language` field when sending verification codes.
+
+### Brevo Configuration
+
+The service uses Brevo (formerly Sendinblue) for email delivery:
+
+- **Free Tier**: Supports single sender email address
+- **From Email**: Configured globally via `BREVO_FROM_EMAIL` environment variable
+- **From Name**: Can be customized per project via `from_name` field
+- **API Key**: Required for authentication
+
+**Note**: Due to Brevo's free tier limitation, all projects must use the same sender email address, but can have different sender names.
+
 ## API Documentation
 
 ### Authentication
@@ -117,6 +144,7 @@ X-API-Key: your-api-key
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -140,6 +168,7 @@ X-API-Key: your-api-key
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -165,7 +194,6 @@ Content-Type: application/json
   "project_id": "my-project",
   "project_name": "My Project",
   "api_key": "my-api-key",
-  "from_email": "noreply@myproject.com",
   "from_name": "My Project Service",
   "description": "Project description",
   "rate_limit": 60,
@@ -181,7 +209,7 @@ Content-Type: application/json
 
 {
   "project_name": "Updated Project Name",
-  "from_email": "new@myproject.com",
+  "from_name": "Updated Project Service",
   "is_active": true
 }
 ```
@@ -212,8 +240,8 @@ X-API-Key: your-api-key
 
 ## Project Structure
 
-```
-auth-mail/
+```text
+verification-api/
 ├── cmd/
 │   └── server/
 │       └── main.go              # Application entry point
@@ -249,11 +277,11 @@ auth-mail/
 ## Database Schema
 
 ### Projects Table
+
 - `id` - Primary key
 - `project_id` - Unique project identifier
 - `project_name` - Project display name
 - `api_key` - Project API key
-- `from_email` - Sender email address
 - `from_name` - Sender name
 - `template_id` - Email template ID (optional)
 - `description` - Project description
@@ -266,6 +294,7 @@ auth-mail/
 - `updated_at` - Last update timestamp
 
 ### Verification Codes Table
+
 - `id` - Primary key
 - `project_id` - Project identifier
 - `email` - User email address
@@ -278,6 +307,7 @@ auth-mail/
 - `created_at` - Creation timestamp
 
 ### Verification Logs Table
+
 - `id` - Primary key
 - `project_id` - Project identifier
 - `email` - User email address
@@ -311,7 +341,7 @@ curl -X POST http://localhost:8080/api/verification/send-code \
   -H "Content-Type: application/json" \
   -H "X-Project-ID: default" \
   -H "X-API-Key: default-api-key" \
-  -d '{"email": "test@example.com", "project_id": "default"}'
+  -d '{"email": "test@example.com", "project_id": "default", "language": "en"}'
 
 # Verify code
 curl -X POST http://localhost:8080/api/verification/verify-code \
@@ -330,7 +360,7 @@ curl -X POST http://localhost:8080/api/verification/verify-code \
 docker-compose up -d
 
 # View logs
-docker-compose logs -f verification-service
+docker-compose logs -f verification-api
 
 # Stop services
 docker-compose down
@@ -344,10 +374,10 @@ docker-compose down
 
 ```bash
 # Build
-go build -o verification-service cmd/server/main.go
+go build -o verification-api cmd/server/main.go
 
 # Run
-./verification-service
+./verification-api
 ```
 
 ## Security Considerations
