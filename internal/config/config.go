@@ -21,7 +21,6 @@ type Config struct {
 	// Brevo email configuration
 	BrevoAPIKey    string
 	BrevoFromEmail string
-	BrevoFromName  string
 
 	// Verification code configuration
 	CodeExpireMinutes int
@@ -44,7 +43,6 @@ func InitConfig() error {
 		RedisURL:          getEnv("REDIS_URL", "redis://localhost:6379/0"),
 		BrevoAPIKey:       getEnv("BREVO_API_KEY", ""),
 		BrevoFromEmail:    getEnv("BREVO_FROM_EMAIL", ""),
-		BrevoFromName:     getEnv("BREVO_FROM_NAME", "Verification Service"),
 		CodeExpireMinutes: getEnvInt("CODE_EXPIRE_MINUTES", 5),
 		RateLimitMinutes:  getEnvInt("RATE_LIMIT_MINUTES", 1),
 		ServiceName:       getEnv("SERVICE_NAME", "Verification Service"),

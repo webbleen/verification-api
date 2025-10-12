@@ -77,7 +77,6 @@ chmod +x start.sh
 | `REDIS_URL` | Redis connection URL | `redis://localhost:6379/0` | Yes |
 | `BREVO_API_KEY` | Brevo API key | - | Yes |
 | `BREVO_FROM_EMAIL` | Sender email address | - | Yes |
-| `BREVO_FROM_NAME` | Sender name | `Verification Service` | No |
 | `CODE_EXPIRE_MINUTES` | Code expiration time (minutes) | `5` | No |
 | `RATE_LIMIT_MINUTES` | Rate limit cooldown (minutes) | `1` | No |
 | `SERVICE_NAME` | Service name | `Verification Service` | No |
@@ -110,10 +109,10 @@ The service uses Brevo (formerly Sendinblue) for email delivery:
 
 - **Free Tier**: Supports single sender email address
 - **From Email**: Configured globally via `BREVO_FROM_EMAIL` environment variable
-- **From Name**: Can be customized per project via `from_name` field
+- **From Name**: Customized per project via `from_name` field in project configuration
 - **API Key**: Required for authentication
 
-**Note**: Due to Brevo's free tier limitation, all projects must use the same sender email address, but can have different sender names.
+**Note**: Due to Brevo's free tier limitation, all projects must use the same sender email address, but each project can have its own sender name configured in the database.
 
 ## API Documentation
 

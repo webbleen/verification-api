@@ -13,7 +13,6 @@ import (
 type BrevoService struct {
 	client    *brevo.APIClient
 	FromEmail string
-	FromName  string
 }
 
 // NewBrevoService creates a new Brevo service instance
@@ -28,7 +27,6 @@ func NewBrevoService() *BrevoService {
 	return &BrevoService{
 		client:    client,
 		FromEmail: config.AppConfig.BrevoFromEmail,
-		FromName:  config.AppConfig.BrevoFromName,
 	}
 }
 
@@ -62,8 +60,8 @@ func (s *BrevoService) getProjectConfig(projectID string) *models.ProjectConfig 
 		return &models.ProjectConfig{
 			ProjectID:   projectID,
 			ProjectName: "Default Project",
-			FromEmail:   s.FromEmail, // Use service default email
-			FromName:    s.FromName,  // Use service default name
+			FromEmail:   s.FromEmail,            // Use service default email
+			FromName:    "Verification Service", // Use default name
 		}
 	}
 

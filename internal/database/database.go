@@ -118,7 +118,7 @@ func insertDefaultData() error {
 		ProjectID:   "default",
 		ProjectName: "Default Project",
 		APIKey:      "default-api-key",
-		FromName:    config.AppConfig.BrevoFromName,
+		FromName:    "Verification Service",
 		IsActive:    true,
 		Description: "Default project for testing and development",
 		RateLimit:   60,   // 60 requests per hour

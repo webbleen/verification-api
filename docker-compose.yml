@@ -13,7 +13,6 @@ services:
       - REDIS_URL=redis://host.docker.internal:6379/0
       - BREVO_API_KEY=your-brevo-api-key
       - BREVO_FROM_EMAIL=noreply@yourdomain.com
-      - BREVO_FROM_NAME=Verification Service
       - CODE_EXPIRE_MINUTES=5
       - RATE_LIMIT_MINUTES=1
       - SERVICE_NAME=Verification API Service
