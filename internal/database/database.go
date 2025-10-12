@@ -1,12 +1,12 @@
 package database
 
 import (
-	"auth-mail/internal/config"
-	"auth-mail/internal/models"
-	"auth-mail/pkg/logging"
 	"context"
 	"fmt"
 	"time"
+	"verification-api/internal/config"
+	"verification-api/internal/models"
+	"verification-api/pkg/logging"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
@@ -55,7 +55,7 @@ func initPostgres() error {
 	if dsn = config.AppConfig.DatabaseURL; dsn == "" {
 		// Fallback to SQLite for development
 		logging.Infof("Database URL not set, using SQLite for development")
-		DB, err = gorm.Open(sqlite.Open("auth-mail.db"), &gorm.Config{
+		DB, err = gorm.Open(sqlite.Open("verification-api.db"), &gorm.Config{
 			Logger: logger.Default.LogMode(logger.Info),
 			NamingStrategy: schema.NamingStrategy{
 				SingularTable: true,

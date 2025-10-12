@@ -1,4 +1,4 @@
-module auth-mail
+module verification-api
 
 go 1.23
 

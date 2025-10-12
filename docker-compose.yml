@@ -1,19 +1,19 @@
 version: '3.8'
 
 services:
-  verification-service:
+  verification-api:
     build: .
-    container_name: auth-mail-service
+    container_name: verification-api-service
     ports:
       - "8080:8080"
     environment:
       - PORT=8080
       - GIN_MODE=debug
-      - DATABASE_URL=postgres://postgres:password@host.docker.internal:5432/auth_mail?sslmode=disable
+      - DATABASE_URL=postgres://postgres:password@host.docker.internal:5432/verification_api?sslmode=disable
       - REDIS_URL=redis://host.docker.internal:6379/0
       - BREVO_API_KEY=your-brevo-api-key
       - BREVO_FROM_EMAIL=noreply@yourdomain.com
       - BREVO_FROM_NAME=Verification Service
       - CODE_EXPIRE_MINUTES=5
       - RATE_LIMIT_MINUTES=1
-      - SERVICE_NAME=Verification Service
+      - SERVICE_NAME=Verification API Service

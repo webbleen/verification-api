@@ -1,11 +1,11 @@
 package middleware
 
 import (
-	"auth-mail/internal/services"
 	"net/http"
 	"time"
+	"verification-api/internal/services"
 
-	"auth-mail/internal/response"
+	"verification-api/internal/response"
 
 	"github.com/gin-gonic/gin"
 )

@@ -1,6 +1,6 @@
-# Verification Service
+# Verification API
 
-A standalone verification code service based on Gin framework and Brevo email service, supporting multi-project global deployment with email verification code sending and validation functionality.
+A standalone verification code API service based on Gin framework and Brevo email service, supporting multi-project global deployment with email verification code sending and validation functionality.
 
 ## Features
 

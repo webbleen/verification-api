@@ -1,11 +1,11 @@
 package main
 
 import (
-	"auth-mail/internal/api"
-	"auth-mail/internal/config"
-	"auth-mail/internal/database"
-	"auth-mail/pkg/logging"
 	"log"
+	"verification-api/internal/api"
+	"verification-api/internal/config"
+	"verification-api/internal/database"
+	"verification-api/pkg/logging"
 
 	"github.com/gin-gonic/gin"
 )

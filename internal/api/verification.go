@@ -1,10 +1,10 @@
 package api
 
 import (
-	"auth-mail/internal/config"
-	"auth-mail/internal/services"
 	"net/http"
 	"time"
+	"verification-api/internal/config"
+	"verification-api/internal/services"
 
 	"github.com/gin-gonic/gin"
 )

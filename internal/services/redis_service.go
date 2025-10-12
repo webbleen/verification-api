@@ -1,11 +1,11 @@
 package services
 
 import (
-	"auth-mail/internal/config"
 	"context"
 	"crypto/rand"
 	"fmt"
 	"time"
+	"verification-api/internal/config"
 
 	"github.com/redis/go-redis/v9"
 )

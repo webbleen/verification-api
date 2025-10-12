@@ -1,5 +1,5 @@
-# Auth-Mail Service Makefile
-# 邮件验证服务管理脚本
+# Verification API Service Makefile
+# 验证API服务管理脚本
 
 .PHONY: help build up down logs restart status test-api
 
@@ -7,8 +7,8 @@
 .DEFAULT_GOAL := help
 
 # 项目配置
-SERVICE_NAME := auth-mail-service
-CONTAINER_NAME := auth-mail-service
+SERVICE_NAME := verification-api-service
+CONTAINER_NAME := verification-api-service
 PORT := 8080
 API_BASE_URL := http://localhost:$(PORT)
 
@@ -19,7 +19,7 @@ RED := \033[0;31m
 NC := \033[0m # No Color
 
 help: ## 显示帮助信息
-	@echo "$(GREEN)Auth-Mail Service 管理命令$(NC)"
+	@echo "$(GREEN)Verification API Service 管理命令$(NC)"
 	@echo ""
 	@echo "$(YELLOW)服务命令:$(NC)"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST) | grep -E "(build|up|down|restart|status|logs)"
@@ -131,7 +131,7 @@ env-check: ## 检查环境变量
 
 # 快速启动命令
 quick-start: ## 快速启动（启动基础设施 + 服务）
-	@echo "$(GREEN)快速启动 Auth-Mail 服务...$(NC)"
+	@echo "$(GREEN)快速启动 Verification API 服务...$(NC)"
 	@make up
 	@echo "$(GREEN)等待服务启动...$(NC)"
 	@sleep 10

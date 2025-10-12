@@ -1,10 +1,10 @@
 package services
 
 import (
-	"auth-mail/internal/config"
-	"auth-mail/internal/models"
 	"context"
 	"fmt"
+	"verification-api/internal/config"
+	"verification-api/internal/models"
 
 	brevo "github.com/getbrevo/brevo-go/lib"
 )

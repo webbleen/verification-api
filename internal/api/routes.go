@@ -1,11 +1,11 @@
 package api
 
 import (
-	"auth-mail/internal/middleware"
-	"auth-mail/internal/models"
-	"auth-mail/internal/services"
 	"net/http"
 	"strconv"
+	"verification-api/internal/middleware"
+	"verification-api/internal/models"
+	"verification-api/internal/services"
 
 	"github.com/gin-gonic/gin"
 )

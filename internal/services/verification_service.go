@@ -1,10 +1,10 @@
 package services
 
 import (
-	"auth-mail/internal/database"
-	"auth-mail/internal/models"
 	"fmt"
 	"time"
+	"verification-api/internal/database"
+	"verification-api/internal/models"
 
 	"gorm.io/gorm"
 )
