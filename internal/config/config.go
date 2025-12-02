@@ -35,6 +35,9 @@ type Config struct {
 	AppStorePrivateKeyPath string
 	AppStorePrivateKey     string
 	AppStoreSharedSecret   string
+
+	// Database migration configuration
+	AutoMigrate bool // 是否自动迁移数据库（生产环境建议设为 false）
 }
 
 var AppConfig *Config
@@ -62,6 +65,7 @@ func InitConfig() error {
 		AppStorePrivateKeyPath: getEnv("APPSTORE_PRIVATE_KEY_PATH", ""),
 		AppStorePrivateKey:     getEnv("APPSTORE_PRIVATE_KEY", ""),
 		AppStoreSharedSecret:   getEnv("APPSTORE_SHARED_SECRET", ""),
+		AutoMigrate:            getEnvBool("AUTO_MIGRATE", true), // 默认开启，生产环境可设为 false
 	}
 
 	return nil
@@ -78,6 +82,15 @@ func getEnvInt(key string, defaultValue int) int {
 	if value := os.Getenv(key); value != "" {
 		if intValue, err := strconv.Atoi(value); err == nil {
 			return intValue
+		}
+	}
+	return defaultValue
+}
+
+func getEnvBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		if boolValue, err := strconv.ParseBool(value); err == nil {
+			return boolValue
 		}
 	}
 	return defaultValue

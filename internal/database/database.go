@@ -33,9 +33,15 @@ func InitDatabase() error {
 		return fmt.Errorf("failed to initialize Redis: %w", err)
 	}
 
-	// Auto migrate tables
-	if err := autoMigrate(); err != nil {
-		return fmt.Errorf("failed to migrate database: %w", err)
+	// Auto migrate tables (only if enabled)
+	if config.AppConfig.AutoMigrate {
+		logging.Infof("Running database migration...")
+		if err := autoMigrate(); err != nil {
+			return fmt.Errorf("failed to migrate database: %w", err)
+		}
+		logging.Infof("Database migration completed")
+	} else {
+		logging.Infof("Database migration skipped (AUTO_MIGRATE=false)")
 	}
 
 	// Insert default data
@@ -63,8 +69,14 @@ func initPostgres() error {
 		})
 	} else {
 		// Use PostgreSQL for production
+		// Use Silent mode to reduce log output and speed up startup
+		logLevel := logger.Silent
+		if config.AppConfig.Mode == "debug" {
+			logLevel = logger.Info
+		}
+
 		DB, err = gorm.Open(postgres.Open(dsn), &gorm.Config{
-			Logger: logger.Default.LogMode(logger.Info),
+			Logger: logger.Default.LogMode(logLevel),
 			NamingStrategy: schema.NamingStrategy{
 				SingularTable: true,
 			},
@@ -75,7 +87,18 @@ func initPostgres() error {
 		return fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	logging.Infof("Database connected successfully")
+	// Test connection with a simple query
+	var version string
+	if err := DB.Raw("SELECT version()").Scan(&version).Error; err != nil {
+		return fmt.Errorf("failed to test database connection: %w", err)
+	}
+
+	// Extract PostgreSQL version (format: "PostgreSQL 15.14 ...")
+	if len(version) > 20 {
+		logging.Infof("Database connected successfully (PostgreSQL %s)", version[:20])
+	} else {
+		logging.Infof("Database connected successfully")
+	}
 	return nil
 }
 

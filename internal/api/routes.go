@@ -42,19 +42,13 @@ func SetupRoutes(r *gin.Engine) {
 			stats.GET("/project", GetProjectStats)
 		}
 
-		// Subscription routes (client API - no authentication required)
+		// Subscription routes
+		// Note: /status endpoint supports both authenticated (backend) and unauthenticated (client) requests
 		subscription := api.Group("/subscription")
 		{
 			subscription.POST("/verify", VerifySubscription)
-			subscription.GET("/status", GetSubscriptionStatus)
+			subscription.GET("/status", GetSubscriptionStatus) // Supports both client and backend calls
 			subscription.POST("/restore", RestoreSubscription)
-		}
-
-		// Subscription routes for app backend (requires project authentication)
-		subscriptionBackend := api.Group("/subscription")
-		subscriptionBackend.Use(middleware.ProjectAuthMiddleware())
-		{
-			subscriptionBackend.GET("/status", GetSubscriptionStatus) // Same endpoint, but with auth
 		}
 
 		// App Store notification routes (no authentication, Apple calls these)
