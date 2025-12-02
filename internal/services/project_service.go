@@ -2,7 +2,6 @@ package services
 
 import (
 	"fmt"
-	"time"
 	"verification-api/internal/database"
 	"verification-api/internal/models"
 
@@ -54,6 +53,32 @@ func (s *ProjectService) ValidateProject(projectID, apiKey string) bool {
 		return false
 	}
 	return project.APIKey == apiKey && project.IsActive
+}
+
+// GetProjectByBundleID gets project by bundle ID (iOS App identification)
+func (s *ProjectService) GetProjectByBundleID(bundleID string) (*models.Project, error) {
+	var project models.Project
+	result := s.db.Where("bundle_id = ? AND is_active = ?", bundleID, true).First(&project)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("project not found for bundle_id: %s", bundleID)
+		}
+		return nil, result.Error
+	}
+	return &project, nil
+}
+
+// GetProjectByPackageName gets project by package name (Android App identification)
+func (s *ProjectService) GetProjectByPackageName(packageName string) (*models.Project, error) {
+	var project models.Project
+	result := s.db.Where("package_name = ? AND is_active = ?", packageName, true).First(&project)
+	if result.Error != nil {
+		if result.Error == gorm.ErrRecordNotFound {
+			return nil, fmt.Errorf("project not found for package_name: %s", packageName)
+		}
+		return nil, result.Error
+	}
+	return &project, nil
 }
 
 // GetAllProjects gets all active projects
@@ -114,40 +139,9 @@ func (s *ProjectService) DeleteProject(projectID string) error {
 }
 
 // GetProjectStats gets project statistics
+// Note: Statistics removed - using Redis only, no persistent logging
 func (s *ProjectService) GetProjectStats(projectID string) (map[string]interface{}, error) {
 	stats := make(map[string]interface{})
-
-	// Count verification codes sent today
-	var codesSentToday int64
-	today := time.Now().Truncate(24 * time.Hour)
-	s.db.Model(&models.VerificationCode{}).
-		Where("project_id = ? AND created_at >= ?", projectID, today).
-		Count(&codesSentToday)
-	stats["codes_sent_today"] = codesSentToday
-
-	// Count verification codes sent this month
-	var codesSentThisMonth int64
-	monthStart := time.Now().Truncate(24*time.Hour).AddDate(0, 0, -time.Now().Day()+1)
-	s.db.Model(&models.VerificationCode{}).
-		Where("project_id = ? AND created_at >= ?", projectID, monthStart).
-		Count(&codesSentThisMonth)
-	stats["codes_sent_this_month"] = codesSentThisMonth
-
-	// Count successful verifications today
-	var successfulVerificationsToday int64
-	s.db.Model(&models.VerificationLog{}).
-		Where("project_id = ? AND action = ? AND success = ? AND created_at >= ?",
-			projectID, "verify", true, today).
-		Count(&successfulVerificationsToday)
-	stats["successful_verifications_today"] = successfulVerificationsToday
-
-	// Count failed verifications today
-	var failedVerificationsToday int64
-	s.db.Model(&models.VerificationLog{}).
-		Where("project_id = ? AND action = ? AND success = ? AND created_at >= ?",
-			projectID, "verify", false, today).
-		Count(&failedVerificationsToday)
-	stats["failed_verifications_today"] = failedVerificationsToday
-
+	// No statistics available - verification codes are stored in Redis only
 	return stats, nil
 }

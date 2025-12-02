@@ -1,7 +1,7 @@
 # Verification API Service Makefile
 # 验证API服务管理脚本
 
-.PHONY: help build up down logs restart status test-api
+.PHONY: help build deploy test-api
 
 # 默认目标
 .DEFAULT_GOAL := help
@@ -21,8 +21,8 @@ NC := \033[0m # No Color
 help: ## 显示帮助信息
 	@echo "$(GREEN)Verification API Service 管理命令$(NC)"
 	@echo ""
-	@echo "$(YELLOW)服务命令:$(NC)"
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST) | grep -E "(build|up|down|restart|status|logs)"
+	@echo "$(YELLOW)构建和部署:$(NC)"
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST) | grep -E "(build|deploy)"
 	@echo ""
 	@echo "$(YELLOW)测试命令:$(NC)"
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST) | grep -E "(test-)"
@@ -31,33 +31,21 @@ help: ## 显示帮助信息
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  $(GREEN)%-15s$(NC) %s\n", $$1, $$2}' $(MAKEFILE_LIST) | grep -E "(monitor)"
 	@echo ""
 
-# 服务命令
-build: ## 构建镜像
-	@echo "$(GREEN)构建镜像...$(NC)"
-	docker-compose build --no-cache
+# 构建和部署命令
+build: ## 编译代码检查错误
+	@echo "$(GREEN)编译代码...$(NC)"
+	@go build -o /dev/null ./cmd/server
+	@echo "$(GREEN)编译成功，没有错误！$(NC)"
 
-up: ## 启动服务
-	@echo "$(GREEN)启动服务...$(NC)"
-	@echo "$(YELLOW)确保基础设施服务已启动...$(NC)"
-	@cd ../infra && docker-compose up -d
-	docker-compose up -d
-	@echo "$(GREEN)服务已启动: $(API_BASE_URL)$(NC)"
-
-down: ## 停止服务
-	@echo "$(GREEN)停止服务...$(NC)"
-	docker-compose down
-
-restart: ## 重启服务
-	@echo "$(GREEN)重启服务...$(NC)"
-	docker-compose restart
-
-logs: ## 查看服务日志
-	@echo "$(GREEN)查看服务日志...$(NC)"
-	docker-compose logs -f verification-service
-
-status: ## 查看服务状态
-	@echo "$(GREEN)服务状态:$(NC)"
-	docker-compose ps
+deploy: ## 部署到 Railway
+	@echo "$(GREEN)部署到 Railway...$(NC)"
+	@if ! command -v railway > /dev/null; then \
+		echo "$(RED)错误: Railway CLI 未安装$(NC)"; \
+		echo "$(YELLOW)请先安装 Railway CLI: https://docs.railway.app/develop/cli$(NC)"; \
+		exit 1; \
+	fi
+	@railway up
+	@echo "$(GREEN)部署完成！$(NC)"
 
 # 测试命令
 test-api: ## 测试 API 接口
@@ -91,11 +79,6 @@ test-send: ## 发送测试邮件
 		-H "X-API-Key: default-api-key" \
 		-d "{\"email\": \"$$email\", \"project_id\": \"default\"}" | jq .
 
-# 部署命令
-deploy: ## 部署到生产环境
-	@echo "$(GREEN)部署到生产环境...$(NC)"
-	@echo "$(YELLOW)请确保已配置生产环境变量$(NC)"
-	docker-compose -f docker-compose.prod.yml up -d
 
 # 监控命令
 monitor: ## 监控服务状态
@@ -114,10 +97,6 @@ monitor: ## 监控服务状态
 		sleep 5; \
 	done
 
-# 日志命令
-logs-error: ## 查看错误日志
-	@echo "$(GREEN)查看错误日志...$(NC)"
-	docker-compose logs | grep -i error
 
 # 环境命令
 env-check: ## 检查环境变量
@@ -129,15 +108,6 @@ env-check: ## 检查环境变量
 	@echo "  DATABASE_URL: $(if $(DATABASE_URL),$(GREEN)已设置$(NC),$(RED)未设置$(NC))"
 	@echo "  REDIS_URL: $(if $(REDIS_URL),$(GREEN)已设置$(NC),$(RED)未设置$(NC))"
 
-# 快速启动命令
-quick-start: ## 快速启动（启动基础设施 + 服务）
-	@echo "$(GREEN)快速启动 Verification API 服务...$(NC)"
-	@make up
-	@echo "$(GREEN)等待服务启动...$(NC)"
-	@sleep 10
-	@make test-health
-	@echo "$(GREEN)服务启动完成！$(NC)"
-	@echo "$(YELLOW)访问地址: $(API_BASE_URL)$(NC)"
 
 # 完整测试命令
 test-all: ## 运行所有测试

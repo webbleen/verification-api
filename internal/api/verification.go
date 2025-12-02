@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"time"
 	"verification-api/internal/config"
 	"verification-api/internal/services"
 
@@ -52,12 +51,7 @@ func SendVerificationCode(c *gin.Context) {
 		projectID = req.ProjectID // If middleware didn't set it, use project ID from request
 	}
 
-	// Get client IP and User-Agent for logging
-	clientIP := c.ClientIP()
-	userAgent := c.GetHeader("User-Agent")
-
 	// Initialize services
-	verificationService := services.NewVerificationService()
 	redisService, err := services.NewRedisService()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, SendCodeResponse{
@@ -67,8 +61,8 @@ func SendVerificationCode(c *gin.Context) {
 		return
 	}
 
-	// Check rate limit using database
-	rateLimited, err := verificationService.CheckRateLimit(projectID.(string), req.Email, clientIP)
+	// Check rate limit using Redis
+	rateLimited, err := redisService.CheckRateLimit(projectID.(string), req.Email)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, SendCodeResponse{
 			Success: false,
@@ -78,9 +72,6 @@ func SendVerificationCode(c *gin.Context) {
 	}
 
 	if rateLimited {
-		// Log rate limit attempt
-		verificationService.LogVerificationAttempt(projectID.(string), req.Email, "send", false, clientIP, userAgent, "Rate limit exceeded")
-
 		c.JSON(http.StatusTooManyRequests, SendCodeResponse{
 			Success: false,
 			Message: "Please wait before requesting another verification code",
@@ -98,21 +89,13 @@ func SendVerificationCode(c *gin.Context) {
 		return
 	}
 
-	// Calculate expiration time
-	expiresAt := time.Now().Add(time.Duration(config.AppConfig.CodeExpireMinutes) * time.Minute)
-
-	// Store verification code to database
-	if err := verificationService.CreateVerificationCode(projectID.(string), req.Email, code, expiresAt, clientIP, userAgent); err != nil {
+	// Store verification code in Redis (with TTL, auto-expire)
+	if err := redisService.StoreCode(projectID.(string), req.Email, code, config.AppConfig.CodeExpireMinutes); err != nil {
 		c.JSON(http.StatusInternalServerError, SendCodeResponse{
 			Success: false,
 			Message: "Failed to store verification code",
 		})
 		return
-	}
-
-	// Also store in Redis for quick access
-	if err := redisService.StoreCode(projectID.(string), req.Email, code, config.AppConfig.CodeExpireMinutes); err != nil {
-		// Log error but don't affect main flow
 	}
 
 	// Set rate limit in Redis
@@ -123,18 +106,12 @@ func SendVerificationCode(c *gin.Context) {
 	// Send email
 	brevoService := services.NewBrevoService()
 	if err := brevoService.SendVerificationCodeEmail(projectID.(string), req.Email, code, req.Language); err != nil {
-		// Log failed email attempt
-		verificationService.LogVerificationAttempt(projectID.(string), req.Email, "send", false, clientIP, userAgent, "Failed to send email: "+err.Error())
-
 		c.JSON(http.StatusInternalServerError, SendCodeResponse{
 			Success: false,
 			Message: "Failed to send verification email",
 		})
 		return
 	}
-
-	// Log successful send
-	verificationService.LogVerificationAttempt(projectID.(string), req.Email, "send", true, clientIP, userAgent, "")
 
 	c.JSON(http.StatusOK, SendCodeResponse{
 		Success: true,
@@ -159,12 +136,7 @@ func VerifyCode(c *gin.Context) {
 		projectID = req.ProjectID // If middleware didn't set it, use project ID from request
 	}
 
-	// Get client IP and User-Agent for logging
-	clientIP := c.ClientIP()
-	userAgent := c.GetHeader("User-Agent")
-
 	// Initialize services
-	verificationService := services.NewVerificationService()
 	redisService, err := services.NewRedisService()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, VerifyCodeResponse{
@@ -174,12 +146,9 @@ func VerifyCode(c *gin.Context) {
 		return
 	}
 
-	// Get verification code from database
-	verificationCode, err := verificationService.GetVerificationCode(projectID.(string), req.Email)
+	// Get verification code from Redis
+	storedCode, err := redisService.GetCode(projectID.(string), req.Email)
 	if err != nil {
-		// Log failed verification attempt
-		verificationService.LogVerificationAttempt(projectID.(string), req.Email, "verify", false, clientIP, userAgent, "Code not found or expired")
-
 		c.JSON(http.StatusBadRequest, VerifyCodeResponse{
 			Success: false,
 			Message: "Verification code not found or expired",
@@ -188,10 +157,7 @@ func VerifyCode(c *gin.Context) {
 	}
 
 	// Compare verification codes
-	if verificationCode.Code != req.Code {
-		// Log failed verification attempt
-		verificationService.LogVerificationAttempt(projectID.(string), req.Email, "verify", false, clientIP, userAgent, "Invalid code")
-
+	if storedCode != req.Code {
 		c.JSON(http.StatusBadRequest, VerifyCodeResponse{
 			Success: false,
 			Message: "Invalid verification code",
@@ -199,16 +165,8 @@ func VerifyCode(c *gin.Context) {
 		return
 	}
 
-	// Mark code as used in database
-	if err := verificationService.MarkCodeAsUsed(verificationCode.ID); err != nil {
-		// Log error but don't fail the verification
-	}
-
-	// Delete verification code from Redis
+	// Delete verification code from Redis (mark as used)
 	redisService.DeleteCode(projectID.(string), req.Email)
-
-	// Log successful verification
-	verificationService.LogVerificationAttempt(projectID.(string), req.Email, "verify", true, clientIP, userAgent, "")
 
 	c.JSON(http.StatusOK, VerifyCodeResponse{
 		Success: true,

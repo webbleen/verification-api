@@ -26,6 +26,15 @@ type Config struct {
 	CodeExpireMinutes int
 	RateLimitMinutes  int
 	ServiceName       string
+
+	// App Store configuration (for subscription center)
+	AppStoreKeyID          string
+	AppStoreIssuerID       string
+	AppStoreBundleID       string
+	AppStoreEnvironment    string
+	AppStorePrivateKeyPath string
+	AppStorePrivateKey     string
+	AppStoreSharedSecret   string
 }
 
 var AppConfig *Config
@@ -37,15 +46,22 @@ func InitConfig() error {
 	}
 
 	AppConfig = &Config{
-		Port:              getEnv("PORT", "8080"),
-		Mode:              getEnv("GIN_MODE", "debug"),
-		DatabaseURL:       getEnv("DATABASE_URL", ""),
-		RedisURL:          getEnv("REDIS_URL", "redis://localhost:6379/0"),
-		BrevoAPIKey:       getEnv("BREVO_API_KEY", ""),
-		BrevoFromEmail:    getEnv("BREVO_FROM_EMAIL", ""),
-		CodeExpireMinutes: getEnvInt("CODE_EXPIRE_MINUTES", 5),
-		RateLimitMinutes:  getEnvInt("RATE_LIMIT_MINUTES", 1),
-		ServiceName:       getEnv("SERVICE_NAME", "Verification Service"),
+		Port:                   getEnv("PORT", "8080"),
+		Mode:                   getEnv("GIN_MODE", "debug"),
+		DatabaseURL:            getEnv("DATABASE_URL", ""),
+		RedisURL:               getEnv("REDIS_URL", "redis://localhost:6379/0"),
+		BrevoAPIKey:            getEnv("BREVO_API_KEY", ""),
+		BrevoFromEmail:         getEnv("BREVO_FROM_EMAIL", ""),
+		CodeExpireMinutes:      getEnvInt("CODE_EXPIRE_MINUTES", 5),
+		RateLimitMinutes:       getEnvInt("RATE_LIMIT_MINUTES", 1),
+		ServiceName:            getEnv("SERVICE_NAME", "Verification Service"),
+		AppStoreKeyID:          getEnv("APPSTORE_KEY_ID", ""),
+		AppStoreIssuerID:       getEnv("APPSTORE_ISSUER_ID", ""),
+		AppStoreBundleID:       getEnv("APPSTORE_BUNDLE_ID", ""),
+		AppStoreEnvironment:    getEnv("APPSTORE_ENVIRONMENT", "sandbox"),
+		AppStorePrivateKeyPath: getEnv("APPSTORE_PRIVATE_KEY_PATH", ""),
+		AppStorePrivateKey:     getEnv("APPSTORE_PRIVATE_KEY", ""),
+		AppStoreSharedSecret:   getEnv("APPSTORE_SHARED_SECRET", ""),
 	}
 
 	return nil

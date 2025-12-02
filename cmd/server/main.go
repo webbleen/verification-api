@@ -21,6 +21,7 @@ func main() {
 
 	// Initialize database
 	if err := database.InitDatabase(); err != nil {
+		logging.Errorf("Failed to initialize database: %v", err)
 		log.Fatal("Failed to initialize database:", err)
 	}
 

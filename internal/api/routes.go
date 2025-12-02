@@ -2,7 +2,6 @@ package api
 
 import (
 	"net/http"
-	"strconv"
 	"verification-api/internal/middleware"
 	"verification-api/internal/models"
 	"verification-api/internal/services"
@@ -40,8 +39,29 @@ func SetupRoutes(r *gin.Engine) {
 		stats := api.Group("/stats")
 		stats.Use(middleware.ProjectAuthMiddleware())
 		{
-			stats.GET("/verification", GetVerificationStats)
 			stats.GET("/project", GetProjectStats)
+		}
+
+		// Subscription routes (client API - no authentication required)
+		subscription := api.Group("/subscription")
+		{
+			subscription.POST("/verify", VerifySubscription)
+			subscription.GET("/status", GetSubscriptionStatus)
+			subscription.POST("/restore", RestoreSubscription)
+		}
+
+		// Subscription routes for app backend (requires project authentication)
+		subscriptionBackend := api.Group("/subscription")
+		subscriptionBackend.Use(middleware.ProjectAuthMiddleware())
+		{
+			subscriptionBackend.GET("/status", GetSubscriptionStatus) // Same endpoint, but with auth
+		}
+
+		// App Store notification routes (no authentication, Apple calls these)
+		appstore := api.Group("/appstore")
+		{
+			appstore.POST("/notifications/production", AppStoreProductionNotificationHandler)
+			appstore.POST("/notifications/sandbox", AppStoreSandboxNotificationHandler)
 		}
 	}
 
@@ -83,6 +103,8 @@ type CreateProjectRequest struct {
 	ContactEmail string `json:"contact_email"`
 	RateLimit    int    `json:"rate_limit"`
 	MaxRequests  int    `json:"max_requests"`
+	BundleID     string `json:"bundle_id"`    // iOS bundle ID (for subscription center)
+	PackageName  string `json:"package_name"` // Android package name (for subscription center)
 }
 
 // CreateProject creates a new project
@@ -114,6 +136,8 @@ func CreateProject(c *gin.Context) {
 		ContactEmail: req.ContactEmail,
 		RateLimit:    req.RateLimit,
 		MaxRequests:  req.MaxRequests,
+		BundleID:     req.BundleID,
+		PackageName:  req.PackageName,
 		IsActive:     true,
 	}
 
@@ -143,6 +167,8 @@ type UpdateProjectRequest struct {
 	RateLimit    int    `json:"rate_limit"`
 	MaxRequests  int    `json:"max_requests"`
 	IsActive     *bool  `json:"is_active"`
+	BundleID     string `json:"bundle_id"`    // iOS bundle ID
+	PackageName  string `json:"package_name"` // Android package name
 }
 
 // UpdateProject updates an existing project
@@ -190,6 +216,12 @@ func UpdateProject(c *gin.Context) {
 	}
 	if req.IsActive != nil {
 		updates["is_active"] = *req.IsActive
+	}
+	if req.BundleID != "" {
+		updates["bundle_id"] = req.BundleID
+	}
+	if req.PackageName != "" {
+		updates["package_name"] = req.PackageName
 	}
 
 	projectService := services.NewProjectService()
@@ -255,41 +287,6 @@ func GetProjectStats(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": "Failed to get project stats: " + err.Error(),
-		})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"data":    stats,
-	})
-}
-
-// GetVerificationStats gets verification statistics
-func GetVerificationStats(c *gin.Context) {
-	projectID, exists := c.Get("project_id")
-	if !exists {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Project ID is required",
-		})
-		return
-	}
-
-	// Get days parameter (default to 7)
-	days := 7
-	if daysStr := c.Query("days"); daysStr != "" {
-		if d, err := strconv.Atoi(daysStr); err == nil && d > 0 && d <= 365 {
-			days = d
-		}
-	}
-
-	verificationService := services.NewVerificationService()
-	stats, err := verificationService.GetVerificationStats(projectID.(string), days)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to get verification stats: " + err.Error(),
 		})
 		return
 	}

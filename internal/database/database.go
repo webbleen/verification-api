@@ -81,8 +81,16 @@ func initPostgres() error {
 
 // initRedis initializes Redis connection
 func initRedis() error {
-	opt, err := redis.ParseURL(config.AppConfig.RedisURL)
+	redisURL := config.AppConfig.RedisURL
+	if redisURL == "" {
+		return fmt.Errorf("REDIS_URL is not set")
+	}
+
+	logging.Infof("Connecting to Redis: %s", maskRedisURL(redisURL))
+
+	opt, err := redis.ParseURL(redisURL)
 	if err != nil {
+		logging.Errorf("Failed to parse Redis URL: %v", err)
 		return fmt.Errorf("failed to parse Redis URL: %w", err)
 	}
 
@@ -94,6 +102,7 @@ func initRedis() error {
 
 	_, err = RedisClient.Ping(ctx).Result()
 	if err != nil {
+		logging.Errorf("Failed to connect to Redis: %v", err)
 		return fmt.Errorf("failed to connect to Redis: %w", err)
 	}
 
@@ -101,13 +110,21 @@ func initRedis() error {
 	return nil
 }
 
+// maskRedisURL masks sensitive information in Redis URL for logging
+func maskRedisURL(url string) string {
+	// Mask password in redis://user:password@host:port format
+	if len(url) > 20 {
+		return url[:10] + "***" + url[len(url)-10:]
+	}
+	return "***"
+}
+
 // autoMigrate performs database migration
 func autoMigrate() error {
 	return DB.AutoMigrate(
 		&models.Project{},
-		&models.VerificationCode{},
-		&models.VerificationLog{},
-		&models.RateLimit{},
+		// VerificationCode, VerificationLog, and RateLimit removed - using Redis only
+		&models.Subscription{}, // 订阅表
 	)
 }
 
