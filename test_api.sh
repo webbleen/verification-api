@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🧪 Testing Verification Service API (Multi-project Support)..."
+echo "🧪 Testing UnionHub API (Multi-project Support)..."
 
 API_BASE_URL="http://localhost:8082"
 TEST_EMAIL="test@example.com"

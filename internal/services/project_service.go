@@ -106,6 +106,25 @@ func (s *ProjectService) CreateProject(project *models.Project) error {
 		return fmt.Errorf("project with API key already exists")
 	}
 
+	// Check if bundle_id already exists (if provided)
+	if project.BundleID != "" {
+		result = s.db.Where("bundle_id = ?", project.BundleID).First(&existingProject)
+		if result.Error == nil {
+			return fmt.Errorf("bundle_id %s already exists in another project", project.BundleID)
+		}
+	}
+
+	// Check if package_name already exists (if provided)
+	if project.PackageName != "" {
+		result = s.db.Where("package_name = ?", project.PackageName).First(&existingProject)
+		if result.Error == nil {
+			return fmt.Errorf("package_name %s already exists in another project", project.PackageName)
+		}
+	}
+
+	// Note: It's allowed for bundle_id and package_name to be the same within the same project
+	// This is useful when iOS and Android versions share the same package identifier
+
 	// Create project
 	if err := s.db.Create(project).Error; err != nil {
 		return fmt.Errorf("failed to create project: %w", err)
@@ -116,7 +135,36 @@ func (s *ProjectService) CreateProject(project *models.Project) error {
 
 // UpdateProject updates an existing project
 func (s *ProjectService) UpdateProject(projectID string, updates map[string]interface{}) error {
-	result := s.db.Model(&models.Project{}).Where("project_id = ?", projectID).Updates(updates)
+	// Check if project exists
+	var existingProject models.Project
+	result := s.db.Where("project_id = ?", projectID).First(&existingProject)
+	if result.Error != nil {
+		return fmt.Errorf("project not found")
+	}
+
+	// Check if bundle_id conflicts with another project (if being updated)
+	if bundleID, ok := updates["bundle_id"].(string); ok && bundleID != "" {
+		var conflictProject models.Project
+		result = s.db.Where("bundle_id = ? AND project_id != ?", bundleID, projectID).First(&conflictProject)
+		if result.Error == nil {
+			return fmt.Errorf("bundle_id %s already exists in another project", bundleID)
+		}
+	}
+
+	// Check if package_name conflicts with another project (if being updated)
+	if packageName, ok := updates["package_name"].(string); ok && packageName != "" {
+		var conflictProject models.Project
+		result = s.db.Where("package_name = ? AND project_id != ?", packageName, projectID).First(&conflictProject)
+		if result.Error == nil {
+			return fmt.Errorf("package_name %s already exists in another project", packageName)
+		}
+	}
+
+	// Note: It's allowed for bundle_id and package_name to be the same within the same project
+	// This is useful when iOS and Android versions share the same package identifier
+
+	// Update project
+	result = s.db.Model(&models.Project{}).Where("project_id = ?", projectID).Updates(updates)
 	if result.Error != nil {
 		return fmt.Errorf("failed to update project: %w", result.Error)
 	}

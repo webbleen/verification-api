@@ -61,7 +61,7 @@ func (s *BrevoService) getProjectConfig(projectID string) *models.ProjectConfig 
 			ProjectID:   projectID,
 			ProjectName: "Default Project",
 			FromEmail:   s.FromEmail,            // Use service default email
-			FromName:    "Verification Service", // Use default name
+			FromName:    "UnionHub", // Use default name
 		}
 	}
 

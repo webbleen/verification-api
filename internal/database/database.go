@@ -158,7 +158,7 @@ func insertDefaultData() error {
 		ProjectID:   "default",
 		ProjectName: "Default Project",
 		APIKey:      "default-api-key",
-		FromName:    "Verification Service",
+		FromName:    "UnionHub",
 		IsActive:    true,
 		Description: "Default project for testing and development",
 		RateLimit:   60,   // 60 requests per hour

@@ -1,5 +1,5 @@
-# Verification API Service Makefile
-# 验证API服务管理脚本
+# UnionHub Makefile
+# UnionHub 服务管理脚本
 
 .PHONY: help build deploy test-api
 
@@ -7,8 +7,8 @@
 .DEFAULT_GOAL := help
 
 # 项目配置
-SERVICE_NAME := verification-api-service
-CONTAINER_NAME := verification-api-service
+SERVICE_NAME := unionhub
+CONTAINER_NAME := unionhub-service
 PORT := 8080
 API_BASE_URL := http://localhost:$(PORT)
 

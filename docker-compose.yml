@@ -1,9 +1,9 @@
 version: '3.8'
 
 services:
-  verification-api:
+  unionhub:
     build: .
-    container_name: verification-api-service
+    container_name: unionhub-service
     ports:
       - "8080:8080"
     environment:
@@ -15,4 +15,4 @@ services:
       - BREVO_FROM_EMAIL=noreply@yourdomain.com
       - CODE_EXPIRE_MINUTES=5
       - RATE_LIMIT_MINUTES=1
-      - SERVICE_NAME=Verification API Service
+      - SERVICE_NAME=UnionHub

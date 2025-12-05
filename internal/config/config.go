@@ -57,7 +57,7 @@ func InitConfig() error {
 		BrevoFromEmail:         getEnv("BREVO_FROM_EMAIL", ""),
 		CodeExpireMinutes:      getEnvInt("CODE_EXPIRE_MINUTES", 5),
 		RateLimitMinutes:       getEnvInt("RATE_LIMIT_MINUTES", 1),
-		ServiceName:            getEnv("SERVICE_NAME", "Verification Service"),
+		ServiceName:            getEnv("SERVICE_NAME", "UnionHub"),
 		AppStoreKeyID:          getEnv("APPSTORE_KEY_ID", ""),
 		AppStoreIssuerID:       getEnv("APPSTORE_ISSUER_ID", ""),
 		AppStoreBundleID:       getEnv("APPSTORE_BUNDLE_ID", ""),

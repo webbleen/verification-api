@@ -1,21 +1,33 @@
-# Verification API
+# UnionHub
 
-A standalone verification code API service based on Gin framework and Brevo email service, supporting multi-project global deployment with email verification code sending and validation functionality.
+**UnionHub** - A unified verification and subscription service center providing email verification code functionality and subscription management for iOS and Android apps. Built with Gin framework, supporting multi-project deployment with centralized subscription verification and App Store Server Notifications handling.
 
 ## Features
 
+### Email Verification
 - 📧 **Code Sending** - Send 6-digit verification codes to specified email addresses
 - ✅ **Code Verification** - Validate user-input verification codes
-- 🏢 **Multi-Project Support** - Support multiple projects with data isolation
-- 🔐 **Project Authentication** - API key-based project identity verification
 - 🚀 **Redis Caching** - Efficient verification code storage and management
 - ⚡ **Rate Limiting** - Prevent verification code abuse (1-minute cooldown)
-- 🐳 **Docker Support** - Containerized deployment
 - 🔒 **Security** - 5-minute code expiration, one-time use
+- 🌍 **Multi-Language Support** - Email content in 8 languages (EN, ZH-CN, ZH-TW, JA, KO, ES, FR, DE)
+
+### Subscription Center
+- 🍎 **iOS Subscription** - Verify App Store receipts and handle Server Notifications
+- 🤖 **Android Subscription** - Verify Google Play purchases (coming soon)
+- 🔄 **Auto-Renewal** - Automatic subscription status updates via webhooks
+- 📱 **Multi-App Support** - Support multiple iOS/Android apps under one developer account
+- 🔐 **Unified Status** - Single source of truth for subscription status
+- 🌐 **Production & Sandbox** - Separate endpoints for production and sandbox environments
+- 🔁 **Restore Purchases** - Support for purchase restoration
+
+### Infrastructure
+- 🏢 **Multi-Project Support** - Support multiple projects with data isolation
+- 🔐 **Project Authentication** - API key-based project identity verification
 - 📊 **Project Management** - Full CRUD operations for project management
 - 🗄️ **Database Support** - PostgreSQL + Redis dual storage architecture
 - 📈 **Statistics & Monitoring** - Comprehensive analytics and monitoring
-- 🌍 **Multi-Language Support** - Email content in 8 languages (EN, ZH-CN, ZH-TW, JA, KO, ES, FR, DE)
+- 🐳 **Docker Support** - Containerized deployment
 
 ## Quick Start
 
@@ -79,7 +91,15 @@ chmod +x start.sh
 | `BREVO_FROM_EMAIL` | Sender email address | - | Yes |
 | `CODE_EXPIRE_MINUTES` | Code expiration time (minutes) | `5` | No |
 | `RATE_LIMIT_MINUTES` | Rate limit cooldown (minutes) | `1` | No |
-| `SERVICE_NAME` | Service name | `Verification Service` | No |
+| `SERVICE_NAME` | Service name | `UnionHub` | No |
+| `AUTO_MIGRATE` | Enable automatic database migration | `true` | No |
+| `APPSTORE_KEY_ID` | App Store Connect API Key ID | - | No (for subscriptions) |
+| `APPSTORE_ISSUER_ID` | App Store Connect Issuer ID | - | No (for subscriptions) |
+| `APPSTORE_BUNDLE_ID` | App Store Bundle ID | - | No (for subscriptions) |
+| `APPSTORE_ENVIRONMENT` | App Store environment (sandbox/production) | `sandbox` | No |
+| `APPSTORE_PRIVATE_KEY_PATH` | Path to App Store private key file | - | No (for subscriptions) |
+| `APPSTORE_PRIVATE_KEY` | App Store private key content (base64) | - | No (for subscriptions) |
+| `APPSTORE_SHARED_SECRET` | App Store shared secret | - | No (for subscriptions) |
 
 ### Database Configuration
 
@@ -114,16 +134,43 @@ The service uses Brevo (formerly Sendinblue) for email delivery:
 
 **Note**: Due to Brevo's free tier limitation, all projects must use the same sender email address, but each project can have its own sender name configured in the database.
 
+### App Store Configuration
+
+For subscription functionality, configure App Store Connect API credentials:
+
+1. **Create App Store Connect API Key**:
+   - Go to App Store Connect → Users and Access → Keys
+   - Create a new key with "App Manager" or "Admin" role
+   - Download the `.p8` private key file
+
+2. **Configure Environment Variables**:
+   ```bash
+   APPSTORE_KEY_ID=ABC123XYZ        # Key ID from App Store Connect
+   APPSTORE_ISSUER_ID=12345678-1234-1234-1234-123456789012  # Issuer ID
+   APPSTORE_BUNDLE_ID=com.example.app  # Your app's bundle ID
+   APPSTORE_ENVIRONMENT=sandbox      # or "production"
+   APPSTORE_PRIVATE_KEY_PATH=/path/to/AuthKey_ABC123XYZ.p8  # Path to .p8 file
+   # OR
+   APPSTORE_PRIVATE_KEY=LS0tLS1CRUdJTi...  # Base64 encoded private key content
+   APPSTORE_SHARED_SECRET=your-shared-secret  # Optional, for receipt validation
+   ```
+
+3. **Configure Webhook URLs in App Store Connect**:
+   - Production: `https://your-domain.com/api/appstore/notifications/production`
+   - Sandbox: `https://your-domain.com/api/appstore/notifications/sandbox`
+
 ## API Documentation
 
 ### Authentication
 
-All API endpoints require project authentication using headers:
+Most API endpoints require project authentication using headers:
 
 ```bash
 X-Project-ID: your-project-id
 X-API-Key: your-api-key
 ```
+
+**Note**: Subscription endpoints (`/api/subscription/*`) can be called without authentication by clients, but app backends should use authentication headers when querying subscription status.
 
 ### Verification Endpoints
 
@@ -196,9 +243,16 @@ Content-Type: application/json
   "from_name": "My Project Service",
   "description": "Project description",
   "rate_limit": 60,
-  "max_requests": 1000
+  "max_requests": 1000,
+  "bundle_id": "com.example.app",
+  "package_name": "com.example.app"
 }
 ```
+
+**Note**: 
+- `bundle_id` is required for iOS app identification
+- `package_name` is required for Android app identification
+- Both can be the same value if iOS and Android use the same package identifier
 
 #### Update Project
 
@@ -237,40 +291,154 @@ X-Project-ID: your-project-id
 X-API-Key: your-api-key
 ```
 
+### Subscription Endpoints
+
+#### Verify Subscription (Client)
+
+Verify a subscription receipt/token from iOS or Android app:
+
+```http
+POST /api/subscription/verify
+Content-Type: application/json
+
+{
+  "platform": "ios",
+  "receipt_data": "base64_receipt_string",
+  "user_id": "user_123",
+  "app_id": "com.example.app"
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Subscription verified successfully",
+  "is_active": true,
+  "expires_at": "2025-12-31T23:59:59Z",
+  "plan": "monthly",
+  "product_id": "com.example.monthly"
+}
+```
+
+#### Get Subscription Status
+
+Query subscription status (can be called by clients or app backends):
+
+```http
+GET /api/subscription/status?user_id=user_123&app_id=com.example.app&platform=ios
+```
+
+**For App Backend (with authentication):**
+
+```http
+GET /api/subscription/status?user_id=user_123&app_id=com.example.app&platform=ios
+X-Project-ID: your-project-id
+X-API-Key: your-api-key
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "is_active": true,
+  "status": "active",
+  "plan": "monthly",
+  "expires_at": "2025-12-31T23:59:59Z",
+  "product_id": "com.example.monthly",
+  "auto_renew": true
+}
+```
+
+#### Restore Subscription
+
+Restore purchases for a user:
+
+```http
+POST /api/subscription/restore
+Content-Type: application/json
+
+{
+  "user_id": "user_123",
+  "app_id": "com.example.app"
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Subscription restored successfully",
+  "is_active": true,
+  "expires_at": "2025-12-31T23:59:59Z",
+  "plan": "monthly",
+  "product_id": "com.example.monthly"
+}
+```
+
+### App Store Webhook Endpoints
+
+These endpoints are called by Apple's App Store Server Notifications:
+
+#### Production Notifications
+
+```http
+POST /api/appstore/notifications/production
+```
+
+#### Sandbox Notifications
+
+```http
+POST /api/appstore/notifications/sandbox
+```
+
+**Note**: These endpoints are called by Apple automatically. Configure the URLs in App Store Connect.
+
 ## Project Structure
 
 ```text
 verification-api/
 ├── cmd/
 │   └── server/
-│       └── main.go              # Application entry point
+│       └── main.go                    # Application entry point
 ├── internal/
 │   ├── api/
-│   │   ├── routes.go            # API routes
-│   │   └── verification.go      # Verification handlers
+│   │   ├── routes.go                  # API routes
+│   │   ├── verification.go           # Verification handlers
+│   │   ├── subscription_verify.go     # Subscription verification
+│   │   ├── subscription_status.go     # Subscription status query
+│   │   ├── subscription_restore.go    # Purchase restoration
+│   │   └── appstore_notification.go   # App Store webhook handlers
 │   ├── config/
-│   │   └── config.go            # Configuration management
+│   │   └── config.go                  # Configuration management
 │   ├── database/
-│   │   └── database.go          # Database connection
+│   │   ├── database.go                # Database connection
+│   │   └── subscription.go            # Subscription database operations
 │   ├── middleware/
-│   │   └── auth.go              # Authentication middleware
+│   │   └── auth.go                    # Authentication middleware
 │   ├── models/
-│   │   ├── database.go          # Database models
-│   │   └── project.go           # Project models
+│   │   ├── database.go                # Database models (Project, BaseModel)
+│   │   ├── project.go                 # Project models
+│   │   └── subscription.go            # Subscription models
 │   └── services/
-│       ├── brevo_service.go     # Email service
-│       ├── project_service.go   # Project management
-│       ├── redis_service.go     # Redis operations
-│       └── verification_service.go # Verification logic
+│       ├── brevo_service.go           # Email service
+│       ├── project_service.go         # Project management
+│       ├── redis_service.go           # Redis operations
+│       ├── verification_service.go    # Verification logic
+│       └── subscription_verification_service.go  # Subscription verification
 ├── pkg/
 │   └── logging/
-│       └── logger.go            # Logging utilities
-├── docker-compose.yml           # Docker Compose configuration
-├── Dockerfile                   # Docker configuration
-├── env.example                  # Environment variables template
-├── go.mod                       # Go module dependencies
-├── start.sh                     # Start script
-└── test_api.sh                  # API testing script
+│       └── logger.go                  # Logging utilities
+├── docker-compose.yml                 # Docker Compose configuration
+├── Dockerfile                         # Docker configuration
+├── env.example                        # Environment variables template
+├── go.mod                             # Go module dependencies
+├── Makefile                           # Build and deployment commands
+├── start.sh                           # Start script
+└── test_api.sh                        # API testing script
 ```
 
 ## Database Schema
@@ -288,33 +456,88 @@ verification-api/
 - `rate_limit` - Rate limit per hour
 - `max_requests` - Max requests per day
 - `is_active` - Project status
+- `bundle_id` - iOS bundle identifier (unique, for app identification)
+- `package_name` - Android package name (unique, for app identification)
 - `created_at` - Creation timestamp
 - `updated_at` - Last update timestamp
+- `deleted_at` - Soft delete timestamp
 
-### Verification Codes Table
+**Note**: `bundle_id` and `package_name` can be the same value if iOS and Android apps share the same package identifier.
+
+### Subscriptions Table
 
 - `id` - Primary key
-- `project_id` - Project identifier
-- `email` - User email address
-- `code` - Verification code
-- `is_used` - Usage status
-- `expires_at` - Expiration timestamp
-- `used_at` - Usage timestamp
-- `ip_address` - Client IP address
-- `user_agent` - Client user agent
+- `user_id` - User identifier (string, defined by app)
+- `project_id` - Project identifier (foreign key to projects)
+- `platform` - Platform: "ios" or "android"
+- `plan` - Subscription plan: "basic", "monthly", "yearly"
+- `status` - Subscription status: "active", "inactive", "cancelled", "expired", "refunded", "failed"
+- `start_date` - Subscription start date
+- `end_date` - Subscription end date
+- `product_id` - Product identifier from App Store/Google Play
+- `transaction_id` - Transaction identifier (unique)
+- `original_transaction_id` - Original transaction ID (for renewals)
+- `environment` - Environment: "sandbox" or "production"
+- `purchase_date` - Purchase date
+- `expires_date` - Expiration date
+- `auto_renew_status` - Auto-renewal status
+- `latest_receipt` - Latest receipt data (base64 for iOS, token for Android)
+- `latest_receipt_info` - Complete receipt information (JSON)
 - `created_at` - Creation timestamp
+- `updated_at` - Last update timestamp
+- `deleted_at` - Soft delete timestamp
 
-### Verification Logs Table
+### Verification Codes
 
-- `id` - Primary key
-- `project_id` - Project identifier
-- `email` - User email address
-- `action` - Action type (send/verify)
-- `success` - Success status
-- `ip_address` - Client IP address
-- `user_agent` - Client user agent
-- `error_msg` - Error message (if failed)
-- `request_time` - Request timestamp
+**Note**: Verification codes are now stored in Redis only (not in database) for better performance and automatic expiration. The following fields are stored in Redis:
+
+- Key format: `verification:{project_id}:{email}`
+- Value: JSON containing code, expires_at, is_used
+- TTL: 5 minutes (configurable via `CODE_EXPIRE_MINUTES`)
+
+## Subscription Center Architecture
+
+The Subscription Center serves as a unified service for managing subscriptions across multiple apps:
+
+### Architecture Overview
+
+```
+App Client (iOS/Android)
+    ↓
+    ├─→ POST /api/subscription/verify (upload receipt/token)
+    ├─→ GET /api/subscription/status (query status)
+    └─→ POST /api/subscription/restore (restore purchases)
+
+App Backend
+    ↓
+    └─→ GET /api/subscription/status (with auth headers)
+
+Subscription Center
+    ↓
+    ├─→ Apple App Store (receipt verification)
+    ├─→ Google Play (purchase verification)
+    └─→ Database (store subscription state)
+
+App Store Server Notifications
+    ↓
+    ├─→ POST /api/appstore/notifications/production
+    └─→ POST /api/appstore/notifications/sandbox
+```
+
+### Key Principles
+
+1. **Single Source of Truth**: Subscription Center is the only place that stores and manages subscription state
+2. **Data Isolation**: Each app's subscriptions are isolated by `project_id`, `bundle_id`, and `package_name`
+3. **Platform Support**: Supports both iOS (App Store) and Android (Google Play)
+4. **Environment Separation**: Separate endpoints for production and sandbox environments
+5. **Webhook Processing**: Automatic subscription status updates via App Store Server Notifications
+
+### Multi-App Support
+
+- **iOS Apps**: Identified by `bundle_id` (e.g., `com.example.app`)
+- **Android Apps**: Identified by `package_name` (e.g., `com.example.app`)
+- **Same Package Name**: iOS and Android can share the same identifier if needed
+- **Multiple Apps**: One Subscription Center can manage subscriptions for multiple apps under the same developer account
 
 ## Testing
 
@@ -330,10 +553,15 @@ chmod +x test_api.sh
 
 ### Manual Testing
 
-```bash
-# Health check
-curl http://localhost:8080/health
+#### Health Check
 
+```bash
+curl http://localhost:8080/health
+```
+
+#### Email Verification
+
+```bash
 # Send verification code
 curl -X POST http://localhost:8080/api/verification/send-code \
   -H "Content-Type: application/json" \
@@ -349,6 +577,31 @@ curl -X POST http://localhost:8080/api/verification/verify-code \
   -d '{"email": "test@example.com", "code": "123456", "project_id": "default"}'
 ```
 
+#### Subscription Testing
+
+```bash
+# Verify subscription (iOS)
+curl -X POST http://localhost:8080/api/subscription/verify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "ios",
+    "receipt_data": "base64_receipt_string",
+    "user_id": "user_123",
+    "app_id": "com.example.app"
+  }'
+
+# Query subscription status
+curl "http://localhost:8080/api/subscription/status?user_id=user_123&app_id=com.example.app&platform=ios"
+
+# Restore subscription
+curl -X POST http://localhost:8080/api/subscription/restore \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "user_123",
+    "app_id": "com.example.app"
+  }'
+```
+
 ## Deployment
 
 ### Docker Compose
@@ -358,7 +611,7 @@ curl -X POST http://localhost:8080/api/verification/verify-code \
 docker-compose up -d
 
 # View logs
-docker-compose logs -f verification-api
+docker-compose logs -f unionhub
 
 # Stop services
 docker-compose down
@@ -367,16 +620,33 @@ docker-compose down
 ### Production Deployment
 
 1. Set up PostgreSQL database
-2. Configure environment variables
-3. Build and run the service:
+2. Set up Redis
+3. Configure environment variables
+4. Build and run the service:
 
 ```bash
 # Build
-go build -o verification-api cmd/server/main.go
+make build
+# or
+go build -o unionhub cmd/server/main.go
 
 # Run
-./verification-api
+./unionhub
 ```
+
+### Railway Deployment
+
+```bash
+# Deploy to Railway
+make deploy
+# or
+railway up
+```
+
+**Note**: 
+- Set `AUTO_MIGRATE=false` in production to avoid running migrations on every deployment
+- Ensure all required environment variables are configured in Railway
+- Configure App Store webhook URLs in App Store Connect after deployment
 
 ## Security Considerations
 
@@ -386,6 +656,9 @@ go build -o verification-api cmd/server/main.go
 - **Network Security**: Use HTTPS in production
 - **Logging**: Monitor logs for suspicious activity
 - **Code Expiration**: Keep verification codes short-lived
+- **App Store Webhooks**: Verify `X-Apple-Notification-Signature` headers (implemented)
+- **Receipt Validation**: Always validate receipts with Apple/Google servers
+- **Subscription Data**: Encrypt sensitive subscription data at rest
 
 ## Monitoring
 
@@ -395,6 +668,9 @@ The service provides comprehensive monitoring capabilities:
 - **Statistics**: Detailed usage statistics per project
 - **Logging**: Complete audit trail of all operations
 - **Rate Limiting**: Built-in abuse prevention
+- **Subscription Status**: Real-time subscription status tracking
+- **Webhook Processing**: Monitor App Store notification processing
+- **Database Migration**: Control via `AUTO_MIGRATE` environment variable
 
 ## Contributing
 
@@ -415,6 +691,34 @@ For support and questions:
 - Check the documentation
 - Review the API examples
 
+## Subscription Workflow
+
+### For App Developers
+
+1. **Create Project**: Register your app in the Subscription Center with `bundle_id` (iOS) and/or `package_name` (Android)
+2. **Configure Webhooks**: Set up App Store Server Notification URLs in App Store Connect
+3. **Client Integration**: 
+   - After purchase, send receipt/token to `/api/subscription/verify`
+   - Query subscription status via `/api/subscription/status`
+4. **Backend Integration**: 
+   - Query subscription status with API key authentication
+   - Use subscription status to control feature access
+
+### For App Backends
+
+1. **Authenticate**: Use `X-Project-ID` and `X-API-Key` headers
+2. **Query Status**: Call `/api/subscription/status` with `user_id` and `app_id`
+3. **Control Access**: Grant or deny access based on `is_active` and `expires_at`
+
+## Troubleshooting
+
+### Common Issues
+
+1. **502 Errors**: Check database and Redis connections, ensure service is binding to `0.0.0.0`
+2. **Subscription Not Found**: Verify `bundle_id`/`package_name` matches App Store configuration
+3. **Webhook Not Received**: Check App Store Connect webhook URL configuration
+4. **Migration Errors**: Set `AUTO_MIGRATE=false` in production, run migrations manually
+
 ---
 
-**Note**: This service is designed for production use with proper database and email service configuration. Make sure to configure all required environment variables before deployment.
+**Note**: This service is designed for production use with proper database and email service configuration. Make sure to configure all required environment variables before deployment. For subscription features, ensure App Store Connect API credentials are properly configured.

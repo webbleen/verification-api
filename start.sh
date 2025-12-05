@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "🚀 Starting Verification Service..."
+echo "🚀 Starting UnionHub..."
 
 # Check if Redis is running
 if ! redis-cli ping > /dev/null 2>&1; then
