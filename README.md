@@ -54,26 +54,7 @@ cp env.example .env
 vim .env
 ```
 
-### 3. Start Database and Redis
-
-```bash
-# PostgreSQL
-docker run -d --name postgres -p 5432:5432 -e POSTGRES_DB=verification_api -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:15-alpine
-
-# Redis
-docker run -d --name redis -p 6379:6379 redis:7-alpine
-```
-
-### 4. Run Service
-
-```bash
-# Development mode
-go run cmd/server/main.go
-
-# Or use the start script
-chmod +x start.sh
-./start.sh
-```
+**Note**: Database and Redis services are provided by Railway. Configure `DATABASE_URL` and `REDIS_URL` environment variables in Railway dashboard.
 
 ## Configuration
 
@@ -93,18 +74,15 @@ chmod +x start.sh
 | `AUTO_MIGRATE` | Enable automatic database migration | `true` | No |
 | `APPSTORE_KEY_ID` | App Store Connect API Key ID | - | No (for subscriptions) |
 | `APPSTORE_ISSUER_ID` | App Store Connect Issuer ID | - | No (for subscriptions) |
-| `APPSTORE_BUNDLE_ID` | App Store Bundle ID | - | No (for subscriptions) |
-| `APPSTORE_ENVIRONMENT` | App Store environment (sandbox/production) | `sandbox` | No |
-| `APPSTORE_PRIVATE_KEY_PATH` | Path to App Store private key file | - | No (for subscriptions) |
-| `APPSTORE_PRIVATE_KEY` | App Store private key content (base64) | - | No (for subscriptions) |
+| `APPSTORE_PRIVATE_KEY` | App Store private key content (base64 or PEM) | - | No (for subscriptions) |
 | `APPSTORE_SHARED_SECRET` | App Store shared secret | - | No (for subscriptions) |
 
 ### Database Configuration
 
-The service supports both PostgreSQL (production) and SQLite (development):
+The service uses PostgreSQL provided by Railway:
 
-- **Production**: Set `DATABASE_URL` to your PostgreSQL connection string
-- **Development**: Leave `DATABASE_URL` empty to use SQLite
+- **Railway Deployment**: Set `DATABASE_URL` to your Railway PostgreSQL connection string
+- The connection string is automatically provided by Railway when you add a PostgreSQL service
 
 ### Multi-Language Support
 
@@ -145,11 +123,7 @@ For subscription functionality, configure App Store Connect API credentials:
    ```bash
    APPSTORE_KEY_ID=ABC123XYZ        # Key ID from App Store Connect
    APPSTORE_ISSUER_ID=12345678-1234-1234-1234-123456789012  # Issuer ID
-   APPSTORE_BUNDLE_ID=com.example.app  # Your app's bundle ID
-   APPSTORE_ENVIRONMENT=sandbox      # or "production"
-   APPSTORE_PRIVATE_KEY_PATH=/path/to/AuthKey_ABC123XYZ.p8  # Path to .p8 file
-   # OR
-   APPSTORE_PRIVATE_KEY=LS0tLS1CRUdJTi...  # Base64 encoded private key content
+   APPSTORE_PRIVATE_KEY=LS0tLS1CRUdJTi...  # Base64 encoded private key content (or PEM format)
    APPSTORE_SHARED_SECRET=your-shared-secret  # Optional, for receipt validation
    ```
 
@@ -242,7 +216,6 @@ Content-Type: application/json
   "api_key": "my-api-key",
   "from_name": "My Project Service",
   "description": "Project description",
-  "rate_limit": 60,
   "max_requests": 1000,
   "bundle_id": "com.example.app",
   "package_name": "com.example.app"
@@ -562,8 +535,8 @@ verification-api/
 ├── env.example                        # Environment variables template
 ├── go.mod                             # Go module dependencies
 ├── Makefile                           # Build and deployment commands
-├── start.sh                           # Start script
-└── test_api.sh                        # API testing script
+└── script/
+    └── test_api.sh                    # API testing script
 ```
 
 ## Database Schema
@@ -578,7 +551,6 @@ verification-api/
 - `template_id` - Email template ID (optional)
 - `description` - Project description
 - `contact_email` - Contact email
-- `rate_limit` - Rate limit per hour
 - `max_requests` - Max requests per day
 - `is_active` - Project status
 - `bundle_id` - iOS bundle identifier (unique, for app identification)
@@ -676,10 +648,10 @@ Google Play Real-Time Developer Notifications
 
 ```bash
 # Make test script executable
-chmod +x test_api.sh
+chmod +x script/test_api.sh
 
 # Run tests
-./test_api.sh
+./script/test_api.sh
 ```
 
 ### Manual Testing
@@ -775,24 +747,12 @@ curl "http://localhost:8080/api/subscription/history?user_id=user_123&app_id=com
 
 ## Deployment
 
-### Production Deployment
+### Railway Deployment (Recommended)
 
-1. Set up PostgreSQL database
-2. Set up Redis
-3. Configure environment variables
-4. Build and run the service:
-
-```bash
-# Build
-make build
-# or
-go build -o unionhub cmd/server/main.go
-
-# Run
-./unionhub
-```
-
-### Railway Deployment
+1. Create a new Railway project
+2. Add PostgreSQL and Redis services in Railway
+3. Configure environment variables in Railway dashboard
+4. Deploy the service:
 
 ```bash
 # Deploy to Railway
@@ -800,6 +760,8 @@ make deploy
 # or
 railway up
 ```
+
+**Note**: Railway automatically provides PostgreSQL and Redis services. Configure `DATABASE_URL` and `REDIS_URL` in Railway dashboard to connect to these services.
 
 **Note**: 
 - Set `AUTO_MIGRATE=false` in production to avoid running migrations on every deployment

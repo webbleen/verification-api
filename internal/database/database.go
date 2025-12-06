@@ -161,7 +161,6 @@ func insertDefaultData() error {
 		FromName:    "UnionHub",
 		IsActive:    true,
 		Description: "Default project for testing and development",
-		RateLimit:   60,   // 60 requests per hour
 		MaxRequests: 1000, // 1000 requests per day
 	}
 

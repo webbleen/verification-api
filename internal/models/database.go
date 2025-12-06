@@ -26,7 +26,6 @@ type Project struct {
 	IsActive     bool   `json:"is_active" gorm:"default:true"`
 	Description  string `json:"description"`
 	ContactEmail string `json:"contact_email"`
-	RateLimit    int    `json:"rate_limit" gorm:"default:60"`     // requests per hour
 	MaxRequests  int    `json:"max_requests" gorm:"default:1000"` // max requests per day
 
 	// App 识别字段（用于订阅中心）

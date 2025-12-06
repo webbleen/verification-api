@@ -67,7 +67,8 @@ auth-mail/
 │   └── services/        # Business logic services
 ├── pkg/logging/         # Logging utilities
 ├── Dockerfile          # Container configuration
-└── test_api.sh         # API testing script
+└── script/
+    └── test_api.sh     # API testing script
 ```
 
 ## 🚀 Key Features
@@ -140,7 +141,6 @@ RATE_LIMIT_MINUTES=1
   "api_key": "secure-api-key",
   "from_email": "noreply@myproject.com",
   "from_name": "My Project Service",
-  "rate_limit": 60,
   "max_requests": 1000,
   "is_active": true
 }
@@ -192,7 +192,7 @@ RATE_LIMIT_MINUTES=1
 ### API Testing
 ```bash
 # Run comprehensive tests
-./test_api.sh
+./script/test_api.sh
 
 # Test specific endpoints
 curl -X POST http://localhost:8080/api/verification/send-code \

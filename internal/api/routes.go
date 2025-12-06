@@ -104,7 +104,6 @@ type CreateProjectRequest struct {
 	TemplateID   string `json:"template_id"`
 	Description  string `json:"description"`
 	ContactEmail string `json:"contact_email"`
-	RateLimit    int    `json:"rate_limit"`
 	MaxRequests  int    `json:"max_requests"`
 	BundleID     string `json:"bundle_id"`    // iOS bundle ID (for subscription center)
 	PackageName  string `json:"package_name"` // Android package name (for subscription center)
@@ -122,9 +121,6 @@ func CreateProject(c *gin.Context) {
 	}
 
 	// Set defaults
-	if req.RateLimit == 0 {
-		req.RateLimit = 60 // 60 requests per hour
-	}
 	if req.MaxRequests == 0 {
 		req.MaxRequests = 1000 // 1000 requests per day
 	}
@@ -137,7 +133,6 @@ func CreateProject(c *gin.Context) {
 		TemplateID:   req.TemplateID,
 		Description:  req.Description,
 		ContactEmail: req.ContactEmail,
-		RateLimit:    req.RateLimit,
 		MaxRequests:  req.MaxRequests,
 		BundleID:     req.BundleID,
 		PackageName:  req.PackageName,
@@ -167,7 +162,6 @@ type UpdateProjectRequest struct {
 	TemplateID   string `json:"template_id"`
 	Description  string `json:"description"`
 	ContactEmail string `json:"contact_email"`
-	RateLimit    int    `json:"rate_limit"`
 	MaxRequests  int    `json:"max_requests"`
 	IsActive     *bool  `json:"is_active"`
 	BundleID     string `json:"bundle_id"`    // iOS bundle ID
@@ -210,9 +204,6 @@ func UpdateProject(c *gin.Context) {
 	}
 	if req.ContactEmail != "" {
 		updates["contact_email"] = req.ContactEmail
-	}
-	if req.RateLimit > 0 {
-		updates["rate_limit"] = req.RateLimit
 	}
 	if req.MaxRequests > 0 {
 		updates["max_requests"] = req.MaxRequests

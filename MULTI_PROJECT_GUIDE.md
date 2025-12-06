@@ -125,7 +125,6 @@ CREATE TABLE project (
     template_id VARCHAR(255),
     custom_config TEXT,
     is_active BOOLEAN DEFAULT true,
-    rate_limit INTEGER DEFAULT 60,
     max_requests INTEGER DEFAULT 1000,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
@@ -257,7 +256,6 @@ curl -X POST http://localhost:8080/api/admin/projects \
     "from_email": "noreply@newproject.com",
     "from_name": "New Project Service",
     "description": "A new project for testing",
-    "rate_limit": 60,
     "max_requests": 1000
   }'
 ```
@@ -270,7 +268,6 @@ curl -X PUT http://localhost:8080/api/admin/projects/new-project \
   -d '{
     "project_name": "Updated Project Name",
     "from_email": "new@newproject.com",
-    "rate_limit": 120,
     "is_active": true
   }'
 ```
@@ -287,36 +284,29 @@ curl -X PUT http://localhost:8080/api/admin/projects/new-project \
 
 ## 🛠️ **Development Setup**
 
-### **Local Development**
+### **Railway Deployment**
 
 ```bash
 # Clone repository
 git clone <repository-url>
-cd auth-mail
+cd verification-api
 
 # Install dependencies
 go mod tidy
 
-# Start PostgreSQL and Redis
-# PostgreSQL
-docker run -d --name postgres -p 5432:5432 -e POSTGRES_DB=verification_api -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:15-alpine
-
-# Redis
-docker run -d --name redis -p 6379:6379 redis:7-alpine
-
-# Set environment variables
-cp env.example .env
-# Edit .env with your configuration
-
-# Run service
-go run cmd/server/main.go
+# Deploy to Railway
+make deploy
+# or
+railway up
 ```
+
+**Note**: Database and Redis services are automatically provided by Railway. Configure environment variables in Railway dashboard.
 
 ### **Testing**
 
 ```bash
 # Run API tests
-./test_api.sh
+./script/test_api.sh
 
 # Test specific project
 curl -X POST http://localhost:8080/api/verification/send-code \
@@ -386,7 +376,7 @@ curl http://localhost:8080/api/admin/projects
 curl http://localhost:8080/api/admin/projects/{project_id}/stats
 
 # Test verification flow
-./test_api.sh
+./script/test_api.sh
 ```
 
 ## 📚 **API Reference**

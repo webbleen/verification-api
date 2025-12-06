@@ -39,10 +39,10 @@ type AppleReceiptResponse struct {
 	Status      int    `json:"status"`
 	Environment string `json:"environment"`
 	Receipt     struct {
-		ReceiptType                string `json:"receipt_type"`
-		BundleID                   string `json:"bundle_id"`
-		ApplicationVersion         string `json:"application_version"`
-		InApp                     []struct {
+		ReceiptType        string `json:"receipt_type"`
+		BundleID           string `json:"bundle_id"`
+		ApplicationVersion string `json:"application_version"`
+		InApp              []struct {
 			TransactionID         string `json:"transaction_id"`
 			OriginalTransactionID string `json:"original_transaction_id"`
 			ProductID             string `json:"product_id"`
@@ -155,19 +155,19 @@ func (s *SubscriptionVerificationService) verifyWithApple(receiptData, environme
 		UserID:                userID,
 		ProjectID:             projectID,
 		Platform:              "ios",
-		Plan:                   plan,
-		Status:                 status,
-		StartDate:              purchaseDate,
-		EndDate:                expiresDate,
-		ProductID:              latestReceiptInfo.ProductID,
-		TransactionID:          latestReceiptInfo.TransactionID,
+		Plan:                  plan,
+		Status:                status,
+		StartDate:             purchaseDate,
+		EndDate:               expiresDate,
+		ProductID:             latestReceiptInfo.ProductID,
+		TransactionID:         latestReceiptInfo.TransactionID,
 		OriginalTransactionID: latestReceiptInfo.OriginalTransactionID,
-		Environment:            appleResp.Environment,
-		PurchaseDate:           purchaseDate,
-		ExpiresDate:            expiresDate,
-		AutoRenewStatus:        true, // Default, will be updated by webhook
-		LatestReceipt:          appleResp.LatestReceipt,
-		LatestReceiptInfo:      string(body),
+		Environment:           appleResp.Environment,
+		PurchaseDate:          purchaseDate,
+		ExpiresDate:           expiresDate,
+		AutoRenewStatus:       true, // Default, will be updated by webhook
+		LatestReceipt:         appleResp.LatestReceipt,
+		LatestReceiptInfo:     string(body),
 	}
 
 	// Save or update subscription
@@ -224,8 +224,15 @@ func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, sign
 		environment = "Production"
 	}
 
+	// Get project to retrieve bundle_id (using database directly to avoid circular import)
+	db := database.GetDB()
+	var project models.Project
+	if err := db.Where("project_id = ? AND is_active = ?", projectID, true).First(&project).Error; err != nil {
+		return nil, fmt.Errorf("failed to get project: %w", err)
+	}
+
 	// Generate JWT token for App Store Server API authentication
-	authToken, err := s.generateAppStoreJWT()
+	authToken, err := s.generateAppStoreJWT(project.BundleID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate auth token: %w", err)
 	}
@@ -335,7 +342,7 @@ func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, sign
 		ExpiresDate:           expiresDate,
 		AutoRenewStatus:       true, // Will be updated by webhook
 		LatestReceipt:         signedTransaction,
-		LatestReceiptInfo:      string(body),
+		LatestReceiptInfo:     string(body),
 	}
 
 	// Save or update subscription
@@ -347,7 +354,8 @@ func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, sign
 }
 
 // generateAppStoreJWT generates JWT token for App Store Server API authentication
-func (s *SubscriptionVerificationService) generateAppStoreJWT() (string, error) {
+// bundleID is optional and can be empty (Apple allows omitting bid in JWT)
+func (s *SubscriptionVerificationService) generateAppStoreJWT(bundleID string) (string, error) {
 	keyID := config.AppConfig.AppStoreKeyID
 	issuerID := config.AppConfig.AppStoreIssuerID
 	privateKey := config.AppConfig.AppStorePrivateKey
@@ -356,31 +364,25 @@ func (s *SubscriptionVerificationService) generateAppStoreJWT() (string, error) 
 		return "", fmt.Errorf("App Store API credentials not configured")
 	}
 
-	// Load private key
-	var key *ecdsa.PrivateKey
-	var err error
-
-	if config.AppConfig.AppStorePrivateKeyPath != "" {
-		// Load from file
-		key, err = loadPrivateKeyFromFile(config.AppConfig.AppStorePrivateKeyPath)
-	} else {
-		// Load from environment variable (base64 or PEM)
-		key, err = loadPrivateKeyFromString(privateKey)
-	}
-
+	// Load private key from environment variable (base64 or PEM)
+	key, err := loadPrivateKeyFromString(privateKey)
 	if err != nil {
 		return "", fmt.Errorf("failed to load private key: %w", err)
 	}
 
 	// Create JWT token
 	now := time.Now()
-	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
+	claims := jwt.MapClaims{
 		"iss": issuerID,
 		"iat": now.Unix(),
 		"exp": now.Add(20 * time.Minute).Unix(),
 		"aud": "appstoreconnect-v1",
-		"bid": config.AppConfig.AppStoreBundleID,
-	})
+	}
+	// Add bundle_id only if provided (optional field)
+	if bundleID != "" {
+		claims["bid"] = bundleID
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodES256, claims)
 
 	token.Header["kid"] = keyID
 
@@ -390,13 +392,6 @@ func (s *SubscriptionVerificationService) generateAppStoreJWT() (string, error) 
 	}
 
 	return tokenString, nil
-}
-
-// loadPrivateKeyFromFile loads ECDSA private key from file
-func loadPrivateKeyFromFile(path string) (*ecdsa.PrivateKey, error) {
-	// Implementation would read file and parse PEM
-	// For now, return error as this requires file I/O
-	return nil, fmt.Errorf("loading from file not yet implemented, use APPSTORE_PRIVATE_KEY env var")
 }
 
 // loadPrivateKeyFromString loads ECDSA private key from string (PEM or base64)
@@ -467,4 +462,3 @@ func getPlanFromProductID(productID string) string {
 		return "basic"
 	}
 }
-
