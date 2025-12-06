@@ -49,9 +49,18 @@ func SetupRoutes(r *gin.Engine) {
 			subscription.POST("/verify", VerifySubscription)
 			subscription.GET("/status", GetSubscriptionStatus) // Supports both client and backend calls
 			subscription.POST("/restore", RestoreSubscription)
+			subscription.POST("/bind_account", BindAccount)      // Bind user_id to subscription
+			subscription.GET("/history", GetSubscriptionHistory) // Get subscription history
 		}
 
-		// App Store notification routes (no authentication, Apple calls these)
+		// Webhook routes (no authentication, called by Apple/Google)
+		webhook := r.Group("/webhook")
+		{
+			webhook.POST("/apple", AppStoreWebhookHandler)    // Unified Apple webhook (handles both production and sandbox)
+			webhook.POST("/google", GooglePlayWebhookHandler) // Google Play webhook
+		}
+
+		// Legacy App Store notification routes (deprecated, use /webhook/apple instead)
 		appstore := api.Group("/appstore")
 		{
 			appstore.POST("/notifications/production", AppStoreProductionNotificationHandler)

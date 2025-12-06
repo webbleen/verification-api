@@ -12,14 +12,18 @@ import (
 
 // GetSubscriptionStatusResponse represents subscription status response
 type GetSubscriptionStatusResponse struct {
-	Success    bool   `json:"success"`
-	Message    string `json:"message,omitempty"`
-	IsActive   bool   `json:"is_active"`
-	Status     string `json:"status,omitempty"`
-	Plan       string `json:"plan,omitempty"`
-	ExpiresAt  string `json:"expires_at,omitempty"`
-	ProductID  string `json:"product_id,omitempty"`
-	AutoRenew  bool   `json:"auto_renew,omitempty"`
+	Success     bool   `json:"success"`
+	Message     string `json:"message,omitempty"`
+	IsActive    bool   `json:"is_active"`
+	Platform    string `json:"platform,omitempty"`     // Platform: ios or android
+	Status      string `json:"status,omitempty"`        // Subscription status
+	Plan        string `json:"plan,omitempty"`
+	ExpiresDate string `json:"expires_date,omitempty"` // ISO 8601 format
+	ProductID   string `json:"product_id,omitempty"`
+	AutoRenew   bool   `json:"auto_renew,omitempty"`
+
+	// Legacy support (deprecated)
+	ExpiresAt string `json:"expires_at,omitempty"` // Deprecated: use expires_date
 }
 
 // GetSubscriptionStatus gets subscription status
@@ -73,13 +77,15 @@ func GetSubscriptionStatus(c *gin.Context) {
 	isActive := subscription.Status == "active" && subscription.ExpiresDate.After(time.Now())
 
 	c.JSON(http.StatusOK, GetSubscriptionStatusResponse{
-		Success:   true,
-		IsActive:  isActive,
-		Status:    subscription.Status,
-		Plan:      subscription.Plan,
-		ExpiresAt: subscription.ExpiresDate.Format(time.RFC3339),
-		ProductID: subscription.ProductID,
-		AutoRenew: subscription.AutoRenewStatus,
+		Success:     true,
+		IsActive:    isActive,
+		Platform:    subscription.Platform,
+		Status:      subscription.Status,
+		Plan:        subscription.Plan,
+		ExpiresDate: subscription.ExpiresDate.Format(time.RFC3339),
+		ExpiresAt:   subscription.ExpiresDate.Format(time.RFC3339), // Legacy support
+		ProductID:   subscription.ProductID,
+		AutoRenew:   subscription.AutoRenewStatus,
 	})
 }
 

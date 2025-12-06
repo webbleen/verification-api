@@ -105,6 +105,50 @@ func AppStoreSandboxNotificationHandler(c *gin.Context) {
 	processAppStoreNotification("sandbox", c)
 }
 
+// AppStoreWebhookHandler handles unified Apple webhook (both production and sandbox)
+// POST /webhook/apple
+// Determines environment from notification data
+func AppStoreWebhookHandler(c *gin.Context) {
+	// Verify JWT signature if present
+	signature := c.GetHeader("X-Apple-Notification-Signature")
+	if signature != "" {
+		// TODO: Verify JWT signature using Apple's public keys
+		// For now, we'll process the notification
+		logging.Infof("Received Apple webhook with signature: %s", signature[:20]+"...")
+	}
+
+	// Read raw body
+	body, err := c.GetRawData()
+	if err != nil {
+		logging.Errorf("Failed to read request body: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Failed to read request body",
+		})
+		return
+	}
+
+	// Parse notification to determine environment
+	var notification models.AppStoreNotification
+	if err := json.Unmarshal(body, &notification); err != nil {
+		logging.Errorf("Failed to parse notification: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid notification format",
+		})
+		return
+	}
+
+	// Determine environment from notification data
+	environment := "production"
+	if notification.Data.Environment == "Sandbox" || notification.Data.Environment == "sandbox" {
+		environment = "sandbox"
+	}
+
+	// Process notification
+	processAppStoreNotification(environment, c)
+}
+
 // parseTransactionInfo parses transaction info from base64 string
 func parseTransactionInfo(signedTransactionInfo string) (*models.TransactionInfo, error) {
 	decoded, err := base64.StdEncoding.DecodeString(signedTransactionInfo)

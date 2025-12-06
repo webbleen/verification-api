@@ -39,7 +39,7 @@ A comprehensive email verification system built using Gin framework and Brevo em
 - **Email Service**: Brevo API
 - **Authentication**: Project-based API keys
 - **Caching**: Redis for performance
-- **Containerization**: Docker + Docker Compose
+- **Containerization**: Docker
 
 ### Database Design
 - **Projects**: Project configurations and settings
@@ -66,7 +66,6 @@ auth-mail/
 │   ├── models/          # Data models
 │   └── services/        # Business logic services
 ├── pkg/logging/         # Logging utilities
-├── docker-compose.yml   # Container orchestration
 ├── Dockerfile          # Container configuration
 └── test_api.sh         # API testing script
 ```
@@ -148,15 +147,6 @@ RATE_LIMIT_MINUTES=1
 ```
 
 ## 🐳 Deployment
-
-### Docker Compose
-```bash
-# Start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f verification-service
-```
 
 ### Production Deployment
 1. Set up PostgreSQL database

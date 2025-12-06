@@ -110,3 +110,31 @@ func CreateOrUpdateSubscription(subscription *models.Subscription) error {
 	return DB.Save(&existingSubscription).Error
 }
 
+// FindSubscriptionByOriginalTransactionID finds subscription by original transaction ID (across all projects)
+func FindSubscriptionByOriginalTransactionID(originalTransactionID string) (*models.Subscription, error) {
+	var subscription models.Subscription
+	err := DB.Where("original_transaction_id = ?", originalTransactionID).First(&subscription).Error
+	if err != nil {
+		return nil, err
+	}
+	return &subscription, nil
+}
+
+// FindSubscriptionByPurchaseToken finds subscription by purchase token (Android)
+func FindSubscriptionByPurchaseToken(purchaseToken string) (*models.Subscription, error) {
+	var subscription models.Subscription
+	// Purchase token is stored in LatestReceipt field for Android
+	err := DB.Where("platform = ? AND latest_receipt = ?", "android", purchaseToken).First(&subscription).Error
+	if err != nil {
+		return nil, err
+	}
+	return &subscription, nil
+}
+
+// GetAllUserSubscriptions gets all subscriptions for a user across all projects
+func GetAllUserSubscriptions(userID string) ([]models.Subscription, error) {
+	var subscriptions []models.Subscription
+	err := DB.Where("user_id = ?", userID).Order("created_at DESC").Find(&subscriptions).Error
+	return subscriptions, err
+}
+

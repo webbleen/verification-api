@@ -85,10 +85,7 @@ monitor: ## 监控服务状态
 	@echo "$(GREEN)监控服务状态...$(NC)"
 	@while true; do \
 		clear; \
-		echo "$(GREEN)=== Auth-Mail Service 状态 ===$(NC)"; \
-		echo ""; \
-		echo "$(YELLOW)服务状态:$(NC)"; \
-		docker-compose ps; \
+		echo "$(GREEN)=== UnionHub Service 状态 ===$(NC)"; \
 		echo ""; \
 		echo "$(YELLOW)健康检查:$(NC)"; \
 		curl -s $(API_BASE_URL)/health | jq . 2>/dev/null || echo "$(RED)服务不可用$(NC)"; \

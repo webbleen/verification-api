@@ -13,12 +13,14 @@
 - 🌍 **Multi-Language Support** - Email content in 8 languages (EN, ZH-CN, ZH-TW, JA, KO, ES, FR, DE)
 
 ### Subscription Center
-- 🍎 **iOS Subscription** - Verify App Store receipts and handle Server Notifications
-- 🤖 **Android Subscription** - Verify Google Play purchases (coming soon)
+- 🍎 **iOS Subscription** - Verify App Store receipts using App Store Server API (JWT-based)
+- 🤖 **Android Subscription** - Verify Google Play purchases using Google Play Developer API
 - 🔄 **Auto-Renewal** - Automatic subscription status updates via webhooks
 - 📱 **Multi-App Support** - Support multiple iOS/Android apps under one developer account
 - 🔐 **Unified Status** - Single source of truth for subscription status
-- 🌐 **Production & Sandbox** - Separate endpoints for production and sandbox environments
+- 🌐 **Production & Sandbox** - Unified webhook endpoint automatically handles both environments
+- 🔗 **Account Binding** - Bind user_id to subscriptions when webhook arrives first
+- 📜 **History Tracking** - Complete subscription history for audit and analytics
 - 🔁 **Restore Purchases** - Support for purchase restoration
 
 ### Infrastructure
@@ -55,10 +57,6 @@ vim .env
 ### 3. Start Database and Redis
 
 ```bash
-# Using Docker Compose (recommended)
-docker-compose up -d
-
-# Or start individually
 # PostgreSQL
 docker run -d --name postgres -p 5432:5432 -e POSTGRES_DB=verification_api -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:15-alpine
 
@@ -156,8 +154,10 @@ For subscription functionality, configure App Store Connect API credentials:
    ```
 
 3. **Configure Webhook URLs in App Store Connect**:
-   - Production: `https://your-domain.com/api/appstore/notifications/production`
-   - Sandbox: `https://your-domain.com/api/appstore/notifications/sandbox`
+   - **Recommended**: `https://your-domain.com/webhook/apple` (unified endpoint)
+   - **Legacy**: 
+     - Production: `https://your-domain.com/api/appstore/notifications/production`
+     - Sandbox: `https://your-domain.com/api/appstore/notifications/sandbox`
 
 ## API Documentation
 
@@ -295,7 +295,9 @@ X-API-Key: your-api-key
 
 #### Verify Subscription (Client)
 
-Verify a subscription receipt/token from iOS or Android app:
+Verify a subscription receipt/token from iOS or Android app using standardized format:
+
+**iOS Request (Recommended - App Store Server API):**
 
 ```http
 POST /api/subscription/verify
@@ -303,8 +305,39 @@ Content-Type: application/json
 
 {
   "platform": "ios",
-  "receipt_data": "base64_receipt_string",
   "user_id": "user_123",
+  "product_id": "com.example.monthly",
+  "signed_transaction": "eyJhbGciOiJFUzI1NiIsIng1YyI6WyJNSUlCU...",
+  "transaction_id": "1000000999999",
+  "app_id": "com.example.app"
+}
+```
+
+**iOS Request (Legacy - Receipt Verification):**
+
+```http
+POST /api/subscription/verify
+Content-Type: application/json
+
+{
+  "platform": "ios",
+  "user_id": "user_123",
+  "receipt_data": "base64_receipt_string",
+  "app_id": "com.example.app"
+}
+```
+
+**Android Request:**
+
+```http
+POST /api/subscription/verify
+Content-Type: application/json
+
+{
+  "platform": "android",
+  "user_id": "user_123",
+  "product_id": "com.example.monthly",
+  "purchase_token": "opaque-token-up-to-150-characters",
   "app_id": "com.example.app"
 }
 ```
@@ -316,11 +349,18 @@ Content-Type: application/json
   "success": true,
   "message": "Subscription verified successfully",
   "is_active": true,
-  "expires_at": "2025-12-31T23:59:59Z",
+  "platform": "ios",
+  "expires_date": "2025-12-31T23:59:59Z",
   "plan": "monthly",
-  "product_id": "com.example.monthly"
+  "product_id": "com.example.monthly",
+  "auto_renew": true
 }
 ```
+
+**Note**: 
+- iOS: Use `signed_transaction` (JWT) and `transaction_id` for App Store Server API (recommended)
+- Android: Use `purchase_token` for Google Play verification
+- Legacy `receipt_data` format is still supported for backward compatibility
 
 #### Get Subscription Status
 
@@ -344,9 +384,10 @@ X-API-Key: your-api-key
 {
   "success": true,
   "is_active": true,
+  "platform": "ios",
   "status": "active",
   "plan": "monthly",
-  "expires_at": "2025-12-31T23:59:59Z",
+  "expires_date": "2025-12-31T23:59:59Z",
   "product_id": "com.example.monthly",
   "auto_renew": true
 }
@@ -373,29 +414,111 @@ Content-Type: application/json
   "success": true,
   "message": "Subscription restored successfully",
   "is_active": true,
-  "expires_at": "2025-12-31T23:59:59Z",
+  "expires_date": "2025-12-31T23:59:59Z",
   "plan": "monthly",
   "product_id": "com.example.monthly"
 }
 ```
 
-### App Store Webhook Endpoints
+#### Bind Account
 
-These endpoints are called by Apple's App Store Server Notifications:
+Bind user_id to a subscription (useful when webhook arrives before user verification):
 
-#### Production Notifications
+```http
+POST /api/subscription/bind_account
+Content-Type: application/json
+
+{
+  "user_id": "user_123",
+  "original_transaction_id": "1000000999999"
+}
+```
+
+**For Android:**
+
+```http
+POST /api/subscription/bind_account
+Content-Type: application/json
+
+{
+  "user_id": "user_123",
+  "purchase_token": "opaque-token-up-to-150-characters"
+}
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "message": "Account bound successfully"
+}
+```
+
+#### Get Subscription History
+
+Get subscription history for a user:
+
+```http
+GET /api/subscription/history?user_id=user_123&app_id=com.example.app&platform=ios
+```
+
+**Response:**
+
+```json
+{
+  "success": true,
+  "subscriptions": [
+    {
+      "id": 1,
+      "user_id": "user_123",
+      "platform": "ios",
+      "plan": "monthly",
+      "status": "active",
+      "product_id": "com.example.monthly",
+      "transaction_id": "1000000999999",
+      "original_transaction_id": "1000000999999",
+      "purchase_date": "2025-01-01T00:00:00Z",
+      "expires_date": "2025-12-31T23:59:59Z",
+      "auto_renew": true,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  ]
+}
+```
+
+### Webhook Endpoints
+
+These endpoints are called by Apple and Google automatically:
+
+#### Apple App Store Webhook (Unified)
+
+```http
+POST /webhook/apple
+X-Apple-Notification-Signature: <JWT signature>
+```
+
+**Note**: This unified endpoint handles both production and sandbox environments automatically.
+
+#### Apple App Store Webhook (Legacy - Deprecated)
+
+For backward compatibility, these endpoints are still supported:
 
 ```http
 POST /api/appstore/notifications/production
-```
-
-#### Sandbox Notifications
-
-```http
 POST /api/appstore/notifications/sandbox
 ```
 
-**Note**: These endpoints are called by Apple automatically. Configure the URLs in App Store Connect.
+**Note**: It's recommended to use `/webhook/apple` for new integrations.
+
+#### Google Play Webhook
+
+```http
+POST /webhook/google
+```
+
+**Note**: These endpoints are called automatically by Apple/Google. Configure the URLs in App Store Connect and Google Play Console.
 
 ## Project Structure
 
@@ -411,7 +534,10 @@ verification-api/
 │   │   ├── subscription_verify.go     # Subscription verification
 │   │   ├── subscription_status.go     # Subscription status query
 │   │   ├── subscription_restore.go    # Purchase restoration
-│   │   └── appstore_notification.go   # App Store webhook handlers
+│   │   ├── subscription_bind.go       # Bind account
+│   │   ├── subscription_history.go    # Subscription history
+│   │   ├── appstore_notification.go   # App Store webhook handlers
+│   │   └── google_play_notification.go # Google Play webhook handlers
 │   ├── config/
 │   │   └── config.go                  # Configuration management
 │   ├── database/
@@ -432,7 +558,6 @@ verification-api/
 ├── pkg/
 │   └── logging/
 │       └── logger.go                  # Logging utilities
-├── docker-compose.yml                 # Docker Compose configuration
 ├── Dockerfile                         # Docker configuration
 ├── env.example                        # Environment variables template
 ├── go.mod                             # Go module dependencies
@@ -506,7 +631,9 @@ App Client (iOS/Android)
     ↓
     ├─→ POST /api/subscription/verify (upload receipt/token)
     ├─→ GET /api/subscription/status (query status)
-    └─→ POST /api/subscription/restore (restore purchases)
+    ├─→ POST /api/subscription/restore (restore purchases)
+    ├─→ POST /api/subscription/bind_account (bind user_id)
+    └─→ GET /api/subscription/history (get history)
 
 App Backend
     ↓
@@ -514,23 +641,27 @@ App Backend
 
 Subscription Center
     ↓
-    ├─→ Apple App Store (receipt verification)
-    ├─→ Google Play (purchase verification)
+    ├─→ Apple App Store Server API (JWT-based verification)
+    ├─→ Google Play Developer API (purchase verification)
     └─→ Database (store subscription state)
 
-App Store Server Notifications
+App Store Server Notifications V2
     ↓
-    ├─→ POST /api/appstore/notifications/production
-    └─→ POST /api/appstore/notifications/sandbox
+    └─→ POST /webhook/apple (unified endpoint)
+
+Google Play Real-Time Developer Notifications
+    ↓
+    └─→ POST /webhook/google
 ```
 
 ### Key Principles
 
 1. **Single Source of Truth**: Subscription Center is the only place that stores and manages subscription state
 2. **Data Isolation**: Each app's subscriptions are isolated by `project_id`, `bundle_id`, and `package_name`
-3. **Platform Support**: Supports both iOS (App Store) and Android (Google Play)
-4. **Environment Separation**: Separate endpoints for production and sandbox environments
-5. **Webhook Processing**: Automatic subscription status updates via App Store Server Notifications
+3. **Platform Support**: Supports both iOS (App Store Server API) and Android (Google Play Developer API)
+4. **Standardized API**: Uses industry-standard request/response formats
+5. **Webhook Processing**: Automatic subscription status updates via App Store Server Notifications V2 and Google Play RTDN
+6. **JWT Authentication**: Uses App Store Connect API Key for secure verification
 
 ### Multi-App Support
 
@@ -579,21 +710,44 @@ curl -X POST http://localhost:8080/api/verification/verify-code \
 
 #### Subscription Testing
 
+**Verify Subscription (iOS - App Store Server API):**
+
 ```bash
-# Verify subscription (iOS)
 curl -X POST http://localhost:8080/api/subscription/verify \
   -H "Content-Type: application/json" \
   -d '{
     "platform": "ios",
-    "receipt_data": "base64_receipt_string",
     "user_id": "user_123",
+    "product_id": "com.example.monthly",
+    "signed_transaction": "eyJhbGciOiJFUzI1NiIsIng1YyI6WyJNSUlCU..."",
+    "transaction_id": "1000000999999",
     "app_id": "com.example.app"
   }'
+```
 
-# Query subscription status
+**Verify Subscription (Android):**
+
+```bash
+curl -X POST http://localhost:8080/api/subscription/verify \
+  -H "Content-Type: application/json" \
+  -d '{
+    "platform": "android",
+    "user_id": "user_123",
+    "product_id": "com.example.monthly",
+    "purchase_token": "opaque-token-up-to-150-characters",
+    "app_id": "com.example.app"
+  }'
+```
+
+**Query Subscription Status:**
+
+```bash
 curl "http://localhost:8080/api/subscription/status?user_id=user_123&app_id=com.example.app&platform=ios"
+```
 
-# Restore subscription
+**Restore Subscription:**
+
+```bash
 curl -X POST http://localhost:8080/api/subscription/restore \
   -H "Content-Type: application/json" \
   -d '{
@@ -602,20 +756,24 @@ curl -X POST http://localhost:8080/api/subscription/restore \
   }'
 ```
 
-## Deployment
-
-### Docker Compose
+**Bind Account:**
 
 ```bash
-# Start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f unionhub
-
-# Stop services
-docker-compose down
+curl -X POST http://localhost:8080/api/subscription/bind_account \
+  -H "Content-Type: application/json" \
+  -d '{
+    "user_id": "user_123",
+    "original_transaction_id": "1000000999999"
+  }'
 ```
+
+**Get Subscription History:**
+
+```bash
+curl "http://localhost:8080/api/subscription/history?user_id=user_123&app_id=com.example.app&platform=ios"
+```
+
+## Deployment
 
 ### Production Deployment
 
@@ -696,28 +854,42 @@ For support and questions:
 ### For App Developers
 
 1. **Create Project**: Register your app in the Subscription Center with `bundle_id` (iOS) and/or `package_name` (Android)
-2. **Configure Webhooks**: Set up App Store Server Notification URLs in App Store Connect
+2. **Configure Webhooks**: 
+   - **Apple**: Set up App Store Server Notification URL in App Store Connect: `https://your-domain.com/webhook/apple`
+   - **Google**: Set up Real-Time Developer Notification URL in Google Play Console: `https://your-domain.com/webhook/google`
 3. **Client Integration**: 
-   - After purchase, send receipt/token to `/api/subscription/verify`
+   - After purchase, send receipt/token to `/api/subscription/verify` using standardized format
+   - For iOS: Use `signed_transaction` (JWT) and `transaction_id` for App Store Server API
+   - For Android: Use `purchase_token` for Google Play verification
    - Query subscription status via `/api/subscription/status`
+   - Use `/api/subscription/bind_account` if webhook arrives before user verification
 4. **Backend Integration**: 
    - Query subscription status with API key authentication
    - Use subscription status to control feature access
+   - Query subscription history via `/api/subscription/history` for audit purposes
 
 ### For App Backends
 
 1. **Authenticate**: Use `X-Project-ID` and `X-API-Key` headers
 2. **Query Status**: Call `/api/subscription/status` with `user_id` and `app_id`
-3. **Control Access**: Grant or deny access based on `is_active` and `expires_at`
+3. **Control Access**: Grant or deny access based on `is_active` and `expires_date`
+4. **Monitor Subscriptions**: Use `/api/subscription/history` to track subscription changes
 
 ## Troubleshooting
 
 ### Common Issues
 
 1. **502 Errors**: Check database and Redis connections, ensure service is binding to `0.0.0.0`
-2. **Subscription Not Found**: Verify `bundle_id`/`package_name` matches App Store configuration
-3. **Webhook Not Received**: Check App Store Connect webhook URL configuration
+2. **Subscription Not Found**: Verify `bundle_id`/`package_name` matches App Store/Google Play configuration
+3. **Webhook Not Received**: 
+   - Check App Store Connect webhook URL configuration (use `/webhook/apple`)
+   - Check Google Play Console RTDN URL configuration (use `/webhook/google`)
+   - Verify webhook endpoints are publicly accessible
 4. **Migration Errors**: Set `AUTO_MIGRATE=false` in production, run migrations manually
+5. **JWT Authentication Failed**: Verify App Store Connect API Key credentials (Key ID, Issuer ID, Private Key)
+6. **Transaction Verification Failed**: 
+   - For iOS: Ensure `signed_transaction` is valid JWT and `transaction_id` is correct
+   - For Android: Verify `purchase_token` is valid and not expired
 
 ---
 

@@ -2,15 +2,22 @@ package services
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 	"verification-api/internal/config"
 	"verification-api/internal/database"
 	"verification-api/internal/models"
 	"verification-api/pkg/logging"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // SubscriptionVerificationService provides subscription verification operations
@@ -171,9 +178,260 @@ func (s *SubscriptionVerificationService) verifyWithApple(receiptData, environme
 	return subscription, nil
 }
 
-// VerifyGooglePlayPurchase verifies Android purchase (placeholder for future implementation)
+// VerifyAppleTransaction verifies iOS transaction using App Store Server API (modern approach)
+// Uses signed_transaction JWT or transaction_id to query App Store Server API
+func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, signedTransaction, transactionID, productID, userID string) (*models.Subscription, error) {
+	// Parse signed_transaction JWT if provided
+	var actualTransactionID string
+	var bundleID string
+	var environment string
+
+	if signedTransaction != "" {
+		// Parse JWT to extract transaction_id (without verification, just parsing)
+		parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+		token, err := parser.Parse(signedTransaction, func(token *jwt.Token) (interface{}, error) {
+			// Apple uses ES256, we don't need to verify signature here, just parse
+			return nil, nil
+		})
+
+		if err == nil {
+			if claims, ok := token.Claims.(jwt.MapClaims); ok {
+				if tid, ok := claims["transactionId"].(string); ok {
+					actualTransactionID = tid
+				}
+				if bid, ok := claims["bundleId"].(string); ok {
+					bundleID = bid // Store for potential future use
+					_ = bundleID   // Suppress unused warning for now
+				}
+				if env, ok := claims["environment"].(string); ok {
+					environment = env
+				}
+			}
+		}
+	}
+
+	// Use provided transaction_id if JWT parsing didn't work
+	if actualTransactionID == "" {
+		actualTransactionID = transactionID
+	}
+
+	if actualTransactionID == "" {
+		return nil, fmt.Errorf("transaction_id is required")
+	}
+
+	// Determine environment (default to production if not specified)
+	if environment == "" {
+		environment = "Production"
+	}
+
+	// Generate JWT token for App Store Server API authentication
+	authToken, err := s.generateAppStoreJWT()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate auth token: %w", err)
+	}
+
+	// Call App Store Server API
+	apiURL := fmt.Sprintf("https://api.storekit.itunes.apple.com/inApps/v1/transactions/%s", actualTransactionID)
+	req, err := http.NewRequest("GET", apiURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Authorization", "Bearer "+authToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to call App Store Server API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("App Store Server API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	// Parse transaction response
+	var transactionResp struct {
+		SignedTransactionInfo string `json:"signedTransactionInfo"`
+	}
+
+	if err := json.Unmarshal(body, &transactionResp); err != nil {
+		return nil, fmt.Errorf("failed to parse transaction response: %w", err)
+	}
+
+	// Decode and parse signed transaction info
+	decoded, err := base64.StdEncoding.DecodeString(transactionResp.SignedTransactionInfo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode signed transaction: %w", err)
+	}
+
+	var transactionInfo struct {
+		TransactionID         string `json:"transactionId"`
+		OriginalTransactionID string `json:"originalTransactionId"`
+		ProductID             string `json:"productId"`
+		PurchaseDate          int64  `json:"purchaseDate"`
+		ExpiresDate           int64  `json:"expiresDate"`
+		Environment           string `json:"environment"`
+		IsInBillingRetry      bool   `json:"isInBillingRetry"`
+		IsInGracePeriod       bool   `json:"isInGracePeriod"`
+		IsTrialPeriod         bool   `json:"isTrialPeriod"`
+	}
+
+	if err := json.Unmarshal(decoded, &transactionInfo); err != nil {
+		return nil, fmt.Errorf("failed to parse transaction info: %w", err)
+	}
+
+	// Parse dates
+	purchaseDate := time.Unix(transactionInfo.PurchaseDate/1000, 0)
+	expiresDate := time.Unix(transactionInfo.ExpiresDate/1000, 0)
+
+	// Determine status
+	status := "active"
+	if expiresDate.Before(time.Now()) {
+		status = "expired"
+	}
+	if transactionInfo.IsInBillingRetry {
+		status = "billing_retry"
+	}
+	if transactionInfo.IsInGracePeriod {
+		status = "grace_period"
+	}
+
+	// Determine plan from product ID
+	plan := getPlanFromProductID(transactionInfo.ProductID)
+	if productID != "" && productID != transactionInfo.ProductID {
+		// Use provided product_id if different
+		plan = getPlanFromProductID(productID)
+	}
+
+	// Normalize environment
+	env := strings.ToLower(transactionInfo.Environment)
+	if env == "production" {
+		env = "production"
+	} else {
+		env = "sandbox"
+	}
+
+	// Create subscription model
+	subscription := &models.Subscription{
+		UserID:                userID,
+		ProjectID:             projectID,
+		Platform:              "ios",
+		Plan:                  plan,
+		Status:                status,
+		StartDate:             purchaseDate,
+		EndDate:               expiresDate,
+		ProductID:             transactionInfo.ProductID,
+		TransactionID:         transactionInfo.TransactionID,
+		OriginalTransactionID: transactionInfo.OriginalTransactionID,
+		Environment:           env,
+		PurchaseDate:          purchaseDate,
+		ExpiresDate:           expiresDate,
+		AutoRenewStatus:       true, // Will be updated by webhook
+		LatestReceipt:         signedTransaction,
+		LatestReceiptInfo:      string(body),
+	}
+
+	// Save or update subscription
+	if err := database.CreateOrUpdateSubscription(subscription); err != nil {
+		return nil, fmt.Errorf("failed to save subscription: %w", err)
+	}
+
+	return subscription, nil
+}
+
+// generateAppStoreJWT generates JWT token for App Store Server API authentication
+func (s *SubscriptionVerificationService) generateAppStoreJWT() (string, error) {
+	keyID := config.AppConfig.AppStoreKeyID
+	issuerID := config.AppConfig.AppStoreIssuerID
+	privateKey := config.AppConfig.AppStorePrivateKey
+
+	if keyID == "" || issuerID == "" || privateKey == "" {
+		return "", fmt.Errorf("App Store API credentials not configured")
+	}
+
+	// Load private key
+	var key *ecdsa.PrivateKey
+	var err error
+
+	if config.AppConfig.AppStorePrivateKeyPath != "" {
+		// Load from file
+		key, err = loadPrivateKeyFromFile(config.AppConfig.AppStorePrivateKeyPath)
+	} else {
+		// Load from environment variable (base64 or PEM)
+		key, err = loadPrivateKeyFromString(privateKey)
+	}
+
+	if err != nil {
+		return "", fmt.Errorf("failed to load private key: %w", err)
+	}
+
+	// Create JWT token
+	now := time.Now()
+	token := jwt.NewWithClaims(jwt.SigningMethodES256, jwt.MapClaims{
+		"iss": issuerID,
+		"iat": now.Unix(),
+		"exp": now.Add(20 * time.Minute).Unix(),
+		"aud": "appstoreconnect-v1",
+		"bid": config.AppConfig.AppStoreBundleID,
+	})
+
+	token.Header["kid"] = keyID
+
+	tokenString, err := token.SignedString(key)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign token: %w", err)
+	}
+
+	return tokenString, nil
+}
+
+// loadPrivateKeyFromFile loads ECDSA private key from file
+func loadPrivateKeyFromFile(path string) (*ecdsa.PrivateKey, error) {
+	// Implementation would read file and parse PEM
+	// For now, return error as this requires file I/O
+	return nil, fmt.Errorf("loading from file not yet implemented, use APPSTORE_PRIVATE_KEY env var")
+}
+
+// loadPrivateKeyFromString loads ECDSA private key from string (PEM or base64)
+func loadPrivateKeyFromString(keyStr string) (*ecdsa.PrivateKey, error) {
+	// Try to decode as base64 first
+	decoded, err := base64.StdEncoding.DecodeString(keyStr)
+	if err == nil {
+		keyStr = string(decoded)
+	}
+
+	// Parse PEM
+	block, _ := pem.Decode([]byte(keyStr))
+	if block == nil {
+		return nil, fmt.Errorf("failed to parse PEM block")
+	}
+
+	// Parse private key
+	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+
+	ecdsaKey, ok := key.(*ecdsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("key is not ECDSA private key")
+	}
+
+	return ecdsaKey, nil
+}
+
+// VerifyGooglePlayPurchase verifies Android purchase using Google Play Developer API
 func (s *SubscriptionVerificationService) VerifyGooglePlayPurchase(projectID, purchaseToken, productID, userID string) (*models.Subscription, error) {
-	// TODO: Implement Google Play verification
+	// TODO: Implement Google Play verification using Google Play Developer API
+	// API: GET https://androidpublisher.googleapis.com/androidpublisher/v3/applications/{packageName}/purchases/subscriptions/{subscriptionId}/tokens/{token}
+	// Requires: Google Service Account credentials
 	return nil, fmt.Errorf("Google Play verification not yet implemented")
 }
 

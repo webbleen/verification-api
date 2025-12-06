@@ -298,7 +298,11 @@ cd auth-mail
 go mod tidy
 
 # Start PostgreSQL and Redis
-docker-compose up -d postgres redis
+# PostgreSQL
+docker run -d --name postgres -p 5432:5432 -e POSTGRES_DB=verification_api -e POSTGRES_USER=postgres -e POSTGRES_PASSWORD=password postgres:15-alpine
+
+# Redis
+docker run -d --name redis -p 6379:6379 redis:7-alpine
 
 # Set environment variables
 cp env.example .env
