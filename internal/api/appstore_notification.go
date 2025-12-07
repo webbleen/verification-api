@@ -15,9 +15,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var (
+	// Global signature verifier instance
+	signatureVerifier = services.NewSignatureVerifier()
+	// Global replay protection instance
+	replayProtection = services.NewReplayProtection()
+)
+
 // processAppStoreNotification processes App Store notification
 // If body is nil, it will be read from the context
-func processAppStoreNotification(environment string, c *gin.Context, body []byte) {
+func processAppStoreNotification(environment string, c *gin.Context, body []byte, signatureHeader string) {
 	startTime := time.Now()
 
 	// Read raw body if not provided
@@ -42,6 +49,21 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 			"message": "Empty request body",
 		})
 		return
+	}
+
+	// Verify signature if present
+	if signatureHeader != "" {
+		if err := signatureVerifier.VerifyNotification(body, signatureHeader); err != nil {
+			logging.Errorf("Signature verification failed: %v", err)
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"success": false,
+				"message": "Signature verification failed",
+			})
+			return
+		}
+		logging.Infof("Signature verification passed")
+	} else {
+		logging.Infof("No signature header present, skipping verification")
 	}
 
 	// Parse the wrapper to get signedPayload
@@ -103,8 +125,8 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 	}
 
 	// Log parsed notification details
-	logging.Infof("Parsed notification - type: %s, bundle_id: %s, environment: %s, data_version: %s", 
-		notification.NotificationType, notification.Data.BundleID, notification.Data.Environment, notification.DataVersion)
+	logging.Infof("Parsed notification - type: %s, bundle_id: %s, environment: %s, data_version: %s, uuid: %s", 
+		notification.NotificationType, notification.Data.BundleID, notification.Data.Environment, notification.DataVersion, notification.NotificationUUID)
 
 	// Handle heartbeat
 	if notification.NotificationType == "" {
@@ -112,6 +134,16 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 		c.JSON(http.StatusOK, gin.H{
 			"success": true,
 			"status":  "heartbeat_ok",
+		})
+		return
+	}
+
+	// Check for replay attacks
+	if replayProtection.IsReplay(notification.NotificationUUID, notification.SignedDate) {
+		logging.Errorf("Replay attack detected - notification_uuid: %s, signed_date: %d", notification.NotificationUUID, notification.SignedDate)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Duplicate notification detected",
 		})
 		return
 	}
@@ -167,12 +199,10 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 // AppStoreProductionWebhookHandler handles production environment webhook
 // POST /webhook/apple/production
 func AppStoreProductionWebhookHandler(c *gin.Context) {
-	// Verify JWT signature if present
+	// Get signature header
 	signature := c.GetHeader("X-Apple-Notification-Signature")
 	if signature != "" {
-		// TODO: Verify JWT signature using Apple's public keys
-		// For now, we'll process the notification
-		logging.Infof("Received Apple production webhook with signature: %s", signature[:20]+"...")
+		logging.Infof("Received Apple production webhook with signature: %s...", signature[:min(len(signature), 20)])
 	}
 
 	// Read raw body
@@ -187,18 +217,16 @@ func AppStoreProductionWebhookHandler(c *gin.Context) {
 	}
 
 	// Process notification with production environment
-	processAppStoreNotification("production", c, body)
+	processAppStoreNotification("production", c, body, signature)
 }
 
 // AppStoreSandboxWebhookHandler handles sandbox environment webhook
 // POST /webhook/apple/sandbox
 func AppStoreSandboxWebhookHandler(c *gin.Context) {
-	// Verify JWT signature if present
+	// Get signature header
 	signature := c.GetHeader("X-Apple-Notification-Signature")
 	if signature != "" {
-		// TODO: Verify JWT signature using Apple's public keys
-		// For now, we'll process the notification
-		logging.Infof("Received Apple sandbox webhook with signature: %s", signature[:20]+"...")
+		logging.Infof("Received Apple sandbox webhook with signature: %s...", signature[:min(len(signature), 20)])
 	}
 
 	// Read raw body
@@ -213,7 +241,15 @@ func AppStoreSandboxWebhookHandler(c *gin.Context) {
 	}
 
 	// Process notification with sandbox environment
-	processAppStoreNotification("sandbox", c, body)
+	processAppStoreNotification("sandbox", c, body, signature)
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // parseTransactionInfo parses transaction info from JWT string
