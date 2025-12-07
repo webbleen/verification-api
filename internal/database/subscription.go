@@ -3,6 +3,7 @@ package database
 import (
 	"time"
 	"verification-api/internal/models"
+	"verification-api/pkg/logging"
 
 	"gorm.io/gorm"
 )
@@ -81,33 +82,69 @@ func GetLatestSubscriptionByUser(projectID, userID string) (*models.Subscription
 }
 
 // CreateOrUpdateSubscription 创建或更新订阅（按项目）
+// 优先通过 original_transaction_id 查找，支持绑定 user_id
+// 使用数据库事务确保并发安全
 func CreateOrUpdateSubscription(subscription *models.Subscription) error {
-	// 查找现有订阅（按项目、用户和原始交易ID）
-	var existingSubscription models.Subscription
-	err := DB.Where("project_id = ? AND user_id = ? AND original_transaction_id = ?", 
-		subscription.ProjectID, subscription.UserID, subscription.OriginalTransactionID).First(&existingSubscription).Error
+	return DB.Transaction(func(tx *gorm.DB) error {
+		// 首先通过 project_id + original_transaction_id 查找（不考虑 user_id）
+		// 这样可以找到 webhook 创建的 user_id 为空的订阅
+		// 使用 SELECT FOR UPDATE 锁定行，防止并发问题
+		var existingSubscription models.Subscription
+		err := tx.Set("gorm:query_option", "FOR UPDATE").
+			Where("project_id = ? AND original_transaction_id = ?", 
+				subscription.ProjectID, subscription.OriginalTransactionID).
+			First(&existingSubscription).Error
 
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			// 创建新订阅
-			return DB.Create(subscription).Error
+		if err != nil {
+			if err == gorm.ErrRecordNotFound {
+				// 创建新订阅
+				return tx.Create(subscription).Error
+			}
+			return err
 		}
-		return err
-	}
 
-	// 更新现有订阅
-	existingSubscription.Status = subscription.Status
-	existingSubscription.StartDate = subscription.StartDate
-	existingSubscription.EndDate = subscription.EndDate
-	existingSubscription.ExpiresDate = subscription.ExpiresDate
-	existingSubscription.AutoRenewStatus = subscription.AutoRenewStatus
-	existingSubscription.LatestReceipt = subscription.LatestReceipt
-	existingSubscription.LatestReceiptInfo = subscription.LatestReceiptInfo
-	existingSubscription.Plan = subscription.Plan
-	existingSubscription.ProductID = subscription.ProductID
-	existingSubscription.TransactionID = subscription.TransactionID
+		// 更新现有订阅
+		// 处理 user_id 绑定逻辑
+		if existingSubscription.UserID == "" {
+			// 如果现有订阅的 user_id 为空，且新订阅有 user_id，则绑定 user_id
+			if subscription.UserID != "" {
+				logging.Infof("Binding user_id to subscription - original_transaction_id: %s, user_id: %s", 
+					subscription.OriginalTransactionID, subscription.UserID)
+				existingSubscription.UserID = subscription.UserID
+			}
+		} else {
+			// 如果现有订阅已有 user_id
+			if subscription.UserID != "" && existingSubscription.UserID != subscription.UserID {
+				// user_id 不匹配，这可能表示：
+				// 1. 同一个 original_transaction_id 被多个用户使用（不应该发生，因为 original_transaction_id 是唯一的）
+				// 2. 数据不一致或并发冲突
+				// 为了安全，我们保留原有的 user_id，不覆盖
+				logging.Errorf("User ID mismatch detected - original_transaction_id: %s, existing_user_id: %s, new_user_id: %s. Keeping existing user_id.",
+					subscription.OriginalTransactionID, existingSubscription.UserID, subscription.UserID)
+			} else if existingSubscription.UserID == subscription.UserID {
+				// user_id 匹配，正常更新
+				logging.Infof("Updating subscription - original_transaction_id: %s, user_id: %s", 
+					subscription.OriginalTransactionID, subscription.UserID)
+			}
+			// 注意：这里不更新 user_id，保持原有值
+		}
 
-	return DB.Save(&existingSubscription).Error
+		// 更新其他字段
+		existingSubscription.Status = subscription.Status
+		existingSubscription.StartDate = subscription.StartDate
+		existingSubscription.EndDate = subscription.EndDate
+		existingSubscription.ExpiresDate = subscription.ExpiresDate
+		existingSubscription.AutoRenewStatus = subscription.AutoRenewStatus
+		existingSubscription.LatestReceipt = subscription.LatestReceipt
+		existingSubscription.LatestReceiptInfo = subscription.LatestReceiptInfo
+		existingSubscription.Plan = subscription.Plan
+		existingSubscription.ProductID = subscription.ProductID
+		existingSubscription.TransactionID = subscription.TransactionID
+		existingSubscription.Environment = subscription.Environment
+		existingSubscription.PurchaseDate = subscription.PurchaseDate
+
+		return tx.Save(&existingSubscription).Error
+	})
 }
 
 // FindSubscriptionByOriginalTransactionID finds subscription by original transaction ID (across all projects)

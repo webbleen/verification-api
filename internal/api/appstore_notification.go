@@ -173,8 +173,8 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 		return
 	}
 
-	logging.Infof("Parsed transaction info - transaction_id: %s, original_transaction_id: %s, product_id: %s",
-		transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, transactionInfo.ProductID)
+	logging.Infof("Parsed transaction info - transaction_id: %s, original_transaction_id: %s, product_id: %s, app_account_token: %s",
+		transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, transactionInfo.ProductID, transactionInfo.AppAccountToken)
 
 	// Handle notification by type
 	if err := handleNotificationByType(notification.NotificationType, transactionInfo, project.ProjectID, notification.Data.Environment); err != nil {
@@ -333,6 +333,13 @@ func parseTransactionInfo(signedTransactionInfo string) (*models.TransactionInfo
 		transactionInfo.Environment = env
 	}
 
+	// Extract appAccountToken (user_id passed from client during purchase)
+	// Apple stores this as a UUID string in the JWT claims
+	if aat, ok := claims["appAccountToken"].(string); ok {
+		transactionInfo.AppAccountToken = aat
+		logging.Infof("Extracted appAccountToken from transaction: %s", transactionInfo.AppAccountToken)
+	}
+
 	// Validate required fields
 	if transactionInfo.TransactionID == "" {
 		return nil, fmt.Errorf("transaction_id is missing in JWT claims")
@@ -368,8 +375,14 @@ func handleNotificationByType(notificationType string, transactionInfo *models.T
 
 // handleInitialBuy handles initial purchase
 func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, environment string) error {
-	logging.Infof("Handling INITIAL_BUY - transaction: %s, original_transaction: %s, product: %s", 
-		transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, transactionInfo.ProductID)
+	logging.Infof("Handling INITIAL_BUY - transaction: %s, original_transaction: %s, product: %s, app_account_token: %s", 
+		transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, transactionInfo.ProductID, transactionInfo.AppAccountToken)
+
+	// Use appAccountToken as user_id if available
+	userID := transactionInfo.AppAccountToken
+	if userID == "" {
+		logging.Infof("No appAccountToken in transaction, user_id will be set when user verifies receipt")
+	}
 
 	// Find existing subscription by original transaction ID
 	subscription, err := database.GetSubscriptionByOriginalTransactionID(projectID, transactionInfo.OriginalTransactionID)
@@ -377,7 +390,7 @@ func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, enviro
 		// Create new subscription
 		subscription = &models.Subscription{
 			ProjectID:             projectID,
-			UserID:                "", // Will be set when user verifies receipt
+			UserID:                userID, // Use appAccountToken if available
 			Platform:              "ios",
 			Plan:                  getPlanFromProductID(transactionInfo.ProductID),
 			Status:                "active",
@@ -397,12 +410,24 @@ func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, enviro
 			return fmt.Errorf("failed to create subscription: %w", err)
 		}
 		
-		logging.Infof("Created new subscription - transaction: %s, original_transaction: %s", 
-			transactionInfo.TransactionID, transactionInfo.OriginalTransactionID)
+		if userID != "" {
+			logging.Infof("Created new subscription with user_id from appAccountToken - transaction: %s, original_transaction: %s, user_id: %s", 
+				transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, userID)
+		} else {
+			logging.Infof("Created new subscription - transaction: %s, original_transaction: %s", 
+				transactionInfo.TransactionID, transactionInfo.OriginalTransactionID)
+		}
 		return nil
 	}
 
 	// Update existing subscription
+	// If subscription has no user_id but we have appAccountToken, bind it
+	if subscription.UserID == "" && userID != "" {
+		subscription.UserID = userID
+		logging.Infof("Binding user_id from appAccountToken to existing subscription - original_transaction: %s, user_id: %s", 
+			transactionInfo.OriginalTransactionID, userID)
+	}
+
 	subscription.Status = "active"
 	subscription.ExpiresDate = time.Unix(transactionInfo.ExpiresDateMS/1000, 0)
 	subscription.AutoRenewStatus = transactionInfo.AutoRenewStatus == 1
@@ -419,11 +444,18 @@ func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, enviro
 
 // handleDidRenew handles renewal
 func handleDidRenew(transactionInfo *models.TransactionInfo, projectID string) error {
-	logging.Infof("Handling DID_RENEW - transaction: %s", transactionInfo.TransactionID)
+	logging.Infof("Handling DID_RENEW - transaction: %s, app_account_token: %s", transactionInfo.TransactionID, transactionInfo.AppAccountToken)
 
 	subscription, err := database.GetSubscriptionByOriginalTransactionID(projectID, transactionInfo.OriginalTransactionID)
 	if err != nil {
 		return fmt.Errorf("subscription not found: %w", err)
+	}
+
+	// If subscription has no user_id but we have appAccountToken, bind it
+	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
+		subscription.UserID = transactionInfo.AppAccountToken
+		logging.Infof("Binding user_id from appAccountToken during renewal - original_transaction: %s, user_id: %s", 
+			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
 	subscription.Status = "active"
@@ -441,6 +473,13 @@ func handleDidFailToRenew(transactionInfo *models.TransactionInfo, projectID str
 		return fmt.Errorf("subscription not found: %w", err)
 	}
 
+	// If subscription has no user_id but we have appAccountToken, bind it
+	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
+		subscription.UserID = transactionInfo.AppAccountToken
+		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s", 
+			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
+	}
+
 	subscription.Status = "failed"
 	subscription.AutoRenewStatus = false
 	return database.UpdateSubscription(subscription)
@@ -453,6 +492,13 @@ func handleDidCancel(transactionInfo *models.TransactionInfo, projectID string) 
 	subscription, err := database.GetSubscriptionByOriginalTransactionID(projectID, transactionInfo.OriginalTransactionID)
 	if err != nil {
 		return fmt.Errorf("subscription not found: %w", err)
+	}
+
+	// If subscription has no user_id but we have appAccountToken, bind it
+	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
+		subscription.UserID = transactionInfo.AppAccountToken
+		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s", 
+			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
 	subscription.Status = "cancelled"
@@ -469,6 +515,13 @@ func handleDidRefund(transactionInfo *models.TransactionInfo, projectID string) 
 		return fmt.Errorf("subscription not found: %w", err)
 	}
 
+	// If subscription has no user_id but we have appAccountToken, bind it
+	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
+		subscription.UserID = transactionInfo.AppAccountToken
+		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s", 
+			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
+	}
+
 	subscription.Status = "refunded"
 	subscription.AutoRenewStatus = false
 	return database.UpdateSubscription(subscription)
@@ -481,6 +534,13 @@ func handleExpired(transactionInfo *models.TransactionInfo, projectID string) er
 	subscription, err := database.GetSubscriptionByOriginalTransactionID(projectID, transactionInfo.OriginalTransactionID)
 	if err != nil {
 		return fmt.Errorf("subscription not found: %w", err)
+	}
+
+	// If subscription has no user_id but we have appAccountToken, bind it
+	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
+		subscription.UserID = transactionInfo.AppAccountToken
+		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s", 
+			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
 	subscription.Status = "expired"

@@ -37,5 +37,6 @@ type TransactionInfo struct {
 	ExpiresDateMS         int64  `json:"expires_date_ms"`
 	AutoRenewStatus       int    `json:"auto_renew_status"`
 	Environment           string `json:"environment"`
+	AppAccountToken       string `json:"app_account_token"` // User ID passed from client during purchase
 }
 
