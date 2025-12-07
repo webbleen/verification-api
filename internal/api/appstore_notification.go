@@ -43,22 +43,10 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 		return
 	}
 
-	// Log raw body for debugging (first 500 chars)
-	bodyPreviewLen := 500
-	if len(body) < bodyPreviewLen {
-		bodyPreviewLen = len(body)
-	}
-	logging.Infof("Raw notification body (first %d chars): %s", bodyPreviewLen, string(body[:bodyPreviewLen]))
-
-	// Parse notification
-	var notification models.AppStoreNotification
-	if err := json.Unmarshal(body, &notification); err != nil {
-		// Log body preview for debugging (max 200 chars)
-		previewLen := 200
-		if len(body) < previewLen {
-			previewLen = len(body)
-		}
-		logging.Errorf("Failed to parse notification: %v, body length: %d, body preview: %s", err, len(body), string(body[:previewLen]))
+	// Parse the wrapper to get signedPayload
+	var wrapper models.AppStoreNotificationWrapper
+	if err := json.Unmarshal(body, &wrapper); err != nil {
+		logging.Errorf("Failed to parse notification wrapper: %v, body length: %d", err, len(body))
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "Invalid notification format",
@@ -66,13 +54,70 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 		return
 	}
 
+	if wrapper.SignedPayload == "" {
+		logging.Errorf("signedPayload is empty in notification")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "signedPayload is missing",
+		})
+		return
+	}
+
+	// Parse the JWT to get the actual notification
+	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+	token, err := parser.Parse(wrapper.SignedPayload, func(token *jwt.Token) (interface{}, error) {
+		// Apple uses ES256, we don't verify signature here, just parse
+		return nil, nil
+	})
+
+	if err != nil {
+		logging.Errorf("Failed to parse signedPayload JWT: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Failed to parse signedPayload",
+		})
+		return
+	}
+
+	// Extract claims from JWT
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		logging.Errorf("Invalid JWT claims format")
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid JWT claims format",
+		})
+		return
+	}
+
+	// Convert claims to JSON and then to AppStoreNotification struct
+	claimsJSON, err := json.Marshal(claims)
+	if err != nil {
+		logging.Errorf("Failed to marshal JWT claims: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Failed to process notification",
+		})
+		return
+	}
+
+	var notification models.AppStoreNotification
+	if err := json.Unmarshal(claimsJSON, &notification); err != nil {
+		previewLen := 500
+		if len(claimsJSON) < previewLen {
+			previewLen = len(claimsJSON)
+		}
+		logging.Errorf("Failed to unmarshal notification from JWT claims: %v, claims preview: %s", err, string(claimsJSON[:previewLen]))
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Failed to parse notification from JWT",
+		})
+		return
+	}
+
 	// Log parsed notification details
 	logging.Infof("Parsed notification - type: %s, bundle_id: %s, environment: %s, data_version: %s", 
 		notification.NotificationType, notification.Data.BundleID, notification.Data.Environment, notification.DataVersion)
-	
-	// Log full notification structure for debugging
-	notificationJSON, _ := json.Marshal(notification)
-	logging.Infof("Full notification structure: %s", string(notificationJSON))
 
 	// Handle heartbeat
 	if notification.NotificationType == "" {

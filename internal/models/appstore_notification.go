@@ -1,6 +1,13 @@
 package models
 
+// AppStoreNotificationWrapper represents the outer wrapper of App Store Server Notification V2
+// Apple sends notifications as a JWT in the signedPayload field
+type AppStoreNotificationWrapper struct {
+	SignedPayload string `json:"signedPayload"` // JWT containing the actual notification
+}
+
 // AppStoreNotification represents App Store Server Notification V2
+// This is the decoded content from the signedPayload JWT
 // Apple uses camelCase for field names
 type AppStoreNotification struct {
 	NotificationType   string          `json:"notificationType"`   // e.g., "SUBSCRIBED", "DID_RENEW"
