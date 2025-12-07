@@ -278,6 +278,13 @@ func parseTransactionInfo(signedTransactionInfo string) (*models.TransactionInfo
 		return nil, fmt.Errorf("failed to unmarshal JWT payload: %w", err)
 	}
 
+	// Debug: Log all claim keys to help identify appAccountToken field name
+	claimKeys := make([]string, 0, len(claims))
+	for k := range claims {
+		claimKeys = append(claimKeys, k)
+	}
+	logging.Infof("JWT claims keys: %v", claimKeys)
+
 	// Extract transaction information from claims
 	transactionInfo := &models.TransactionInfo{}
 
@@ -335,9 +342,23 @@ func parseTransactionInfo(signedTransactionInfo string) (*models.TransactionInfo
 
 	// Extract appAccountToken (user_id passed from client during purchase)
 	// Apple stores this as a UUID string in the JWT claims
+	// Try different possible field names
+	var appAccountToken string
 	if aat, ok := claims["appAccountToken"].(string); ok {
-		transactionInfo.AppAccountToken = aat
+		appAccountToken = aat
+	} else if aat, ok := claims["app_account_token"].(string); ok {
+		appAccountToken = aat
+	} else if aat, ok := claims["applicationUsername"].(string); ok {
+		appAccountToken = aat
+	} else if aat, ok := claims["application_username"].(string); ok {
+		appAccountToken = aat
+	}
+
+	if appAccountToken != "" {
+		transactionInfo.AppAccountToken = appAccountToken
 		logging.Infof("Extracted appAccountToken from transaction: %s", transactionInfo.AppAccountToken)
+	} else {
+		logging.Infof("No appAccountToken found in JWT claims. Available keys: %v", claimKeys)
 	}
 
 	// Validate required fields
