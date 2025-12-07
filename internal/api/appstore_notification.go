@@ -1,9 +1,11 @@
 package api
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 	"verification-api/internal/database"
 	"verification-api/internal/models"
@@ -11,7 +13,6 @@ import (
 	"verification-api/pkg/logging"
 
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
 )
 
 // processAppStoreNotification processes App Store notification
@@ -63,51 +64,37 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 		return
 	}
 
-	// Parse the JWT to get the actual notification
-	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
-	token, err := parser.Parse(wrapper.SignedPayload, func(token *jwt.Token) (interface{}, error) {
-		// Apple uses ES256, we don't verify signature here, just parse
-		return nil, nil
-	})
+	// Parse JWT manually to skip signature verification
+	// JWT format: header.payload.signature
+	parts := strings.Split(wrapper.SignedPayload, ".")
+	if len(parts) != 3 {
+		logging.Errorf("Invalid JWT format: expected 3 parts, got %d", len(parts))
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid JWT format",
+		})
+		return
+	}
 
+	// Decode payload (second part)
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		logging.Errorf("Failed to parse signedPayload JWT: %v", err)
+		logging.Errorf("Failed to decode JWT payload: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "Failed to parse signedPayload",
+			"message": "Failed to decode JWT payload",
 		})
 		return
 	}
 
-	// Extract claims from JWT
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		logging.Errorf("Invalid JWT claims format")
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid JWT claims format",
-		})
-		return
-	}
-
-	// Convert claims to JSON and then to AppStoreNotification struct
-	claimsJSON, err := json.Marshal(claims)
-	if err != nil {
-		logging.Errorf("Failed to marshal JWT claims: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Failed to process notification",
-		})
-		return
-	}
-
+	// Parse notification from payload
 	var notification models.AppStoreNotification
-	if err := json.Unmarshal(claimsJSON, &notification); err != nil {
+	if err := json.Unmarshal(payload, &notification); err != nil {
 		previewLen := 500
-		if len(claimsJSON) < previewLen {
-			previewLen = len(claimsJSON)
+		if len(payload) < previewLen {
+			previewLen = len(payload)
 		}
-		logging.Errorf("Failed to unmarshal notification from JWT claims: %v, claims preview: %s", err, string(claimsJSON[:previewLen]))
+		logging.Errorf("Failed to unmarshal notification from JWT payload: %v, payload preview: %s", err, string(payload[:previewLen]))
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "Failed to parse notification from JWT",
@@ -236,24 +223,26 @@ func parseTransactionInfo(signedTransactionInfo string) (*models.TransactionInfo
 		return nil, fmt.Errorf("signed_transaction_info is empty")
 	}
 
-	// Parse JWT without verification (Apple signs it, but we don't verify here)
-	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
-	token, err := parser.Parse(signedTransactionInfo, func(token *jwt.Token) (interface{}, error) {
-		// Apple uses ES256, we don't verify signature here, just parse
-		return nil, nil
-	})
+	// Parse JWT manually to skip signature verification
+	// JWT format: header.payload.signature
+	parts := strings.Split(signedTransactionInfo, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid JWT format: expected 3 parts, got %d", len(parts))
+	}
 
+	// Decode payload (second part)
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse JWT: %w", err)
+		return nil, fmt.Errorf("failed to decode JWT payload: %w", err)
 	}
 
-	// Extract claims
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, fmt.Errorf("invalid JWT claims format")
+	// Parse transaction info from payload
+	var claims map[string]interface{}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal JWT payload: %w", err)
 	}
 
-	// Extract transaction information from JWT claims
+	// Extract transaction information from claims
 	transactionInfo := &models.TransactionInfo{}
 
 	if tid, ok := claims["transactionId"].(string); ok {
