@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,6 +11,7 @@ import (
 	"verification-api/pkg/logging"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // processAppStoreNotification processes App Store notification
@@ -59,6 +59,10 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 		return
 	}
 
+	// Log notification details
+	logging.Infof("Received AppStore notification - type: %s, bundle_id: %s, environment: %s", 
+		notification.NotificationType, notification.Data.BundleID, notification.Data.Environment)
+
 	// Handle heartbeat
 	if notification.NotificationType == "" {
 		logging.Infof("AppStore heartbeat - environment: %s", environment)
@@ -81,16 +85,21 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 		return
 	}
 
-	// Parse transaction info
+	logging.Infof("Found project: %s (project_id: %s)", project.ProjectName, project.ProjectID)
+
+	// Parse transaction info from JWT
 	transactionInfo, err := parseTransactionInfo(notification.Data.SignedTransactionInfo)
 	if err != nil {
-		logging.Errorf("Failed to parse transaction info: %v", err)
+		logging.Errorf("Failed to parse transaction info: %v, signed_transaction_info length: %d", err, len(notification.Data.SignedTransactionInfo))
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "Failed to parse transaction info",
 		})
 		return
 	}
+
+	logging.Infof("Parsed transaction info - transaction_id: %s, original_transaction_id: %s, product_id: %s",
+		transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, transactionInfo.ProductID)
 
 	// Handle notification by type
 	if err := handleNotificationByType(notification.NotificationType, transactionInfo, project.ProjectID, notification.Data.Environment); err != nil {
@@ -164,19 +173,95 @@ func AppStoreSandboxWebhookHandler(c *gin.Context) {
 	processAppStoreNotification("sandbox", c, body)
 }
 
-// parseTransactionInfo parses transaction info from base64 string
+// parseTransactionInfo parses transaction info from JWT string
+// signedTransactionInfo is a JWT token from Apple App Store Server Notifications V2
 func parseTransactionInfo(signedTransactionInfo string) (*models.TransactionInfo, error) {
-	decoded, err := base64.StdEncoding.DecodeString(signedTransactionInfo)
+	if signedTransactionInfo == "" {
+		return nil, fmt.Errorf("signed_transaction_info is empty")
+	}
+
+	// Parse JWT without verification (Apple signs it, but we don't verify here)
+	parser := jwt.NewParser(jwt.WithoutClaimsValidation())
+	token, err := parser.Parse(signedTransactionInfo, func(token *jwt.Token) (interface{}, error) {
+		// Apple uses ES256, we don't verify signature here, just parse
+		return nil, nil
+	})
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode transaction info: %w", err)
+		return nil, fmt.Errorf("failed to parse JWT: %w", err)
 	}
 
-	var transactionInfo models.TransactionInfo
-	if err := json.Unmarshal(decoded, &transactionInfo); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal transaction info: %w", err)
+	// Extract claims
+	claims, ok := token.Claims.(jwt.MapClaims)
+	if !ok {
+		return nil, fmt.Errorf("invalid JWT claims format")
 	}
 
-	return &transactionInfo, nil
+	// Extract transaction information from JWT claims
+	transactionInfo := &models.TransactionInfo{}
+
+	if tid, ok := claims["transactionId"].(string); ok {
+		transactionInfo.TransactionID = tid
+	}
+
+	if otid, ok := claims["originalTransactionId"].(string); ok {
+		transactionInfo.OriginalTransactionID = otid
+	}
+
+	if pid, ok := claims["productId"].(string); ok {
+		transactionInfo.ProductID = pid
+	}
+
+	// Handle purchaseDate (can be int64 or float64 in JSON)
+	if pd, ok := claims["purchaseDate"]; ok {
+		switch v := pd.(type) {
+		case float64:
+			transactionInfo.PurchaseDateMS = int64(v)
+		case int64:
+			transactionInfo.PurchaseDateMS = v
+		case int:
+			transactionInfo.PurchaseDateMS = int64(v)
+		}
+	}
+
+	// Handle expiresDate (can be int64 or float64 in JSON)
+	if ed, ok := claims["expiresDate"]; ok {
+		switch v := ed.(type) {
+		case float64:
+			transactionInfo.ExpiresDateMS = int64(v)
+		case int64:
+			transactionInfo.ExpiresDateMS = v
+		case int:
+			transactionInfo.ExpiresDateMS = int64(v)
+		}
+	}
+
+	// Handle autoRenewStatus (can be int or float64 in JSON)
+	if ars, ok := claims["autoRenewStatus"]; ok {
+		switch v := ars.(type) {
+		case float64:
+			transactionInfo.AutoRenewStatus = int(v)
+		case int64:
+			transactionInfo.AutoRenewStatus = int(v)
+		case int:
+			transactionInfo.AutoRenewStatus = v
+		}
+	}
+
+	if env, ok := claims["environment"].(string); ok {
+		transactionInfo.Environment = env
+	}
+
+	// Validate required fields
+	if transactionInfo.TransactionID == "" {
+		return nil, fmt.Errorf("transaction_id is missing in JWT claims")
+	}
+
+	if transactionInfo.OriginalTransactionID == "" {
+		return nil, fmt.Errorf("original_transaction_id is missing in JWT claims")
+	}
+
+	return transactionInfo, nil
 }
 
 // handleNotificationByType handles notification by type
@@ -202,7 +287,8 @@ func handleNotificationByType(notificationType string, transactionInfo *models.T
 
 // handleInitialBuy handles initial purchase
 func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, environment string) error {
-	logging.Infof("Handling INITIAL_BUY - transaction: %s", transactionInfo.TransactionID)
+	logging.Infof("Handling INITIAL_BUY - transaction: %s, original_transaction: %s, product: %s", 
+		transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, transactionInfo.ProductID)
 
 	// Find existing subscription by original transaction ID
 	subscription, err := database.GetSubscriptionByOriginalTransactionID(projectID, transactionInfo.OriginalTransactionID)
@@ -224,14 +310,30 @@ func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, enviro
 			ExpiresDate:           time.Unix(transactionInfo.ExpiresDateMS/1000, 0),
 			AutoRenewStatus:       transactionInfo.AutoRenewStatus == 1,
 		}
-		return database.CreateSubscription(subscription)
+		
+		if err := database.CreateSubscription(subscription); err != nil {
+			logging.Errorf("Failed to create subscription: %v", err)
+			return fmt.Errorf("failed to create subscription: %w", err)
+		}
+		
+		logging.Infof("Created new subscription - transaction: %s, original_transaction: %s", 
+			transactionInfo.TransactionID, transactionInfo.OriginalTransactionID)
+		return nil
 	}
 
 	// Update existing subscription
 	subscription.Status = "active"
 	subscription.ExpiresDate = time.Unix(transactionInfo.ExpiresDateMS/1000, 0)
 	subscription.AutoRenewStatus = transactionInfo.AutoRenewStatus == 1
-	return database.UpdateSubscription(subscription)
+	
+	if err := database.UpdateSubscription(subscription); err != nil {
+		logging.Errorf("Failed to update subscription: %v", err)
+		return fmt.Errorf("failed to update subscription: %w", err)
+	}
+	
+	logging.Infof("Updated existing subscription - transaction: %s, original_transaction: %s", 
+		transactionInfo.TransactionID, transactionInfo.OriginalTransactionID)
+	return nil
 }
 
 // handleDidRenew handles renewal
