@@ -56,15 +56,10 @@ func SetupRoutes(r *gin.Engine) {
 		// Webhook routes (no authentication, called by Apple/Google)
 		webhook := r.Group("/webhook")
 		{
-			webhook.POST("/apple", AppStoreWebhookHandler)    // Unified Apple webhook (handles both production and sandbox)
-			webhook.POST("/google", GooglePlayWebhookHandler) // Google Play webhook
-		}
-
-		// Legacy App Store notification routes (deprecated, use /webhook/apple instead)
-		appstore := api.Group("/appstore")
-		{
-			appstore.POST("/notifications/production", AppStoreProductionNotificationHandler)
-			appstore.POST("/notifications/sandbox", AppStoreSandboxNotificationHandler)
+			// Apple webhook routes (separate endpoints for production and sandbox)
+			webhook.POST("/apple/production", AppStoreProductionWebhookHandler) // Production environment
+			webhook.POST("/apple/sandbox", AppStoreSandboxWebhookHandler)       // Sandbox environment
+			webhook.POST("/google", GooglePlayWebhookHandler)                   // Google Play webhook
 		}
 	}
 

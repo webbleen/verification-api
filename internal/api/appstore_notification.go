@@ -112,28 +112,15 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 	})
 }
 
-// AppStoreProductionNotificationHandler handles production environment notifications
-// POST /api/appstore/notifications/production
-func AppStoreProductionNotificationHandler(c *gin.Context) {
-	processAppStoreNotification("production", c, nil)
-}
-
-// AppStoreSandboxNotificationHandler handles sandbox environment notifications
-// POST /api/appstore/notifications/sandbox
-func AppStoreSandboxNotificationHandler(c *gin.Context) {
-	processAppStoreNotification("sandbox", c, nil)
-}
-
-// AppStoreWebhookHandler handles unified Apple webhook (both production and sandbox)
-// POST /webhook/apple
-// Determines environment from notification data
-func AppStoreWebhookHandler(c *gin.Context) {
+// AppStoreProductionWebhookHandler handles production environment webhook
+// POST /webhook/apple/production
+func AppStoreProductionWebhookHandler(c *gin.Context) {
 	// Verify JWT signature if present
 	signature := c.GetHeader("X-Apple-Notification-Signature")
 	if signature != "" {
 		// TODO: Verify JWT signature using Apple's public keys
 		// For now, we'll process the notification
-		logging.Infof("Received Apple webhook with signature: %s", signature[:20]+"...")
+		logging.Infof("Received Apple production webhook with signature: %s", signature[:20]+"...")
 	}
 
 	// Read raw body
@@ -147,25 +134,34 @@ func AppStoreWebhookHandler(c *gin.Context) {
 		return
 	}
 
-	// Parse notification to determine environment
-	var notification models.AppStoreNotification
-	if err := json.Unmarshal(body, &notification); err != nil {
-		logging.Errorf("Failed to parse notification: %v", err)
+	// Process notification with production environment
+	processAppStoreNotification("production", c, body)
+}
+
+// AppStoreSandboxWebhookHandler handles sandbox environment webhook
+// POST /webhook/apple/sandbox
+func AppStoreSandboxWebhookHandler(c *gin.Context) {
+	// Verify JWT signature if present
+	signature := c.GetHeader("X-Apple-Notification-Signature")
+	if signature != "" {
+		// TODO: Verify JWT signature using Apple's public keys
+		// For now, we'll process the notification
+		logging.Infof("Received Apple sandbox webhook with signature: %s", signature[:20]+"...")
+	}
+
+	// Read raw body
+	body, err := c.GetRawData()
+	if err != nil {
+		logging.Errorf("Failed to read request body: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "Invalid notification format",
+			"message": "Failed to read request body",
 		})
 		return
 	}
 
-	// Determine environment from notification data
-	environment := "production"
-	if notification.Data.Environment == "Sandbox" || notification.Data.Environment == "sandbox" {
-		environment = "sandbox"
-	}
-
-	// Process notification with the already-read body
-	processAppStoreNotification(environment, c, body)
+	// Process notification with sandbox environment
+	processAppStoreNotification("sandbox", c, body)
 }
 
 // parseTransactionInfo parses transaction info from base64 string

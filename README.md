@@ -465,25 +465,25 @@ GET /api/subscription/history?user_id=user_123&app_id=com.example.app&platform=i
 
 These endpoints are called by Apple and Google automatically:
 
-#### Apple App Store Webhook (Unified)
+#### Apple App Store Webhook
 
+**Production Environment:**
 ```http
-POST /webhook/apple
+POST /webhook/apple/production
 X-Apple-Notification-Signature: <JWT signature>
 ```
 
-**Note**: This unified endpoint handles both production and sandbox environments automatically.
-
-#### Apple App Store Webhook (Legacy - Deprecated)
-
-For backward compatibility, these endpoints are still supported:
-
+**Sandbox Environment:**
 ```http
-POST /api/appstore/notifications/production
-POST /api/appstore/notifications/sandbox
+POST /webhook/apple/sandbox
+X-Apple-Notification-Signature: <JWT signature>
 ```
 
-**Note**: It's recommended to use `/webhook/apple` for new integrations.
+**Configuration in App Store Connect:**
+- **Production Server URL**: `https://your-domain.com/webhook/apple/production`
+- **Sandbox Server URL**: `https://your-domain.com/webhook/apple/sandbox`
+
+**Note**: You must configure both URLs separately in App Store Connect. This ensures accurate environment identification and proper handling of production and sandbox notifications.
 
 #### Google Play Webhook
 
@@ -817,7 +817,9 @@ For support and questions:
 
 1. **Create Project**: Register your app in the Subscription Center with `bundle_id` (iOS) and/or `package_name` (Android)
 2. **Configure Webhooks**: 
-   - **Apple**: Set up App Store Server Notification URL in App Store Connect: `https://your-domain.com/webhook/apple`
+   - **Apple**: Set up App Store Server Notification URLs in App Store Connect:
+     - **Production Server URL**: `https://your-domain.com/webhook/apple/production`
+     - **Sandbox Server URL**: `https://your-domain.com/webhook/apple/sandbox`
    - **Google**: Set up Real-Time Developer Notification URL in Google Play Console: `https://your-domain.com/webhook/google`
 3. **Client Integration**: 
    - After purchase, send receipt/token to `/api/subscription/verify` using standardized format
@@ -844,9 +846,12 @@ For support and questions:
 1. **502 Errors**: Check database and Redis connections, ensure service is binding to `0.0.0.0`
 2. **Subscription Not Found**: Verify `bundle_id`/`package_name` matches App Store/Google Play configuration
 3. **Webhook Not Received**: 
-   - Check App Store Connect webhook URL configuration (use `/webhook/apple`)
+   - Check App Store Connect webhook URL configuration:
+     - Production: `/webhook/apple/production`
+     - Sandbox: `/webhook/apple/sandbox`
    - Check Google Play Console RTDN URL configuration (use `/webhook/google`)
    - Verify webhook endpoints are publicly accessible
+   - Ensure you're using the correct endpoint for the environment (production vs sandbox)
 4. **Migration Errors**: Set `AUTO_MIGRATE=false` in production, run migrations manually
 5. **JWT Authentication Failed**: Verify App Store Connect API Key credentials (Key ID, Issuer ID, Private Key)
 6. **Transaction Verification Failed**: 
