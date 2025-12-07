@@ -116,11 +116,11 @@ check-env: ## 检查 Railway 环境变量（自动从 config.go 提取）
 	fi
 	@echo "$(YELLOW)从 internal/config/config.go 提取环境变量...$(NC)"
 	@echo "$(YELLOW)代码中使用的环境变量状态:$(NC)"
-	@railway_vars=$$(railway variables --json 2>/dev/null); \
+	@railway_keys=$$(railway variables --json 2>/dev/null | jq -r 'keys[]' 2>/dev/null); \
 	env_vars=$$(grep -E '^\s+[A-Za-z_]+:\s+getEnv' internal/config/config.go | sed -E 's/.*getEnv(Int|Bool)?\("([^"]+)".*/\2/' | sort -u); \
 	for var in $$env_vars; do \
-		if echo "$$railway_vars" | jq -e ".$$var" > /dev/null 2>&1; then \
-			value=$$(echo "$$railway_vars" | jq -r ".$$var"); \
+		if echo "$$railway_keys" | grep -q "^$$var$$"; then \
+			value=$$(railway variables --json 2>/dev/null | jq -r ".[\"$$var\"]" 2>/dev/null); \
 			if [ -n "$$value" ] && [ "$$value" != "null" ]; then \
 				echo "  $$var: $(GREEN)已设置$(NC)"; \
 			else \

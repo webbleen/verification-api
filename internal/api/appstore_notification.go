@@ -15,16 +15,30 @@ import (
 )
 
 // processAppStoreNotification processes App Store notification
-func processAppStoreNotification(environment string, c *gin.Context) {
+// If body is nil, it will be read from the context
+func processAppStoreNotification(environment string, c *gin.Context, body []byte) {
 	startTime := time.Now()
 
-	// Read raw body
-	body, err := c.GetRawData()
-	if err != nil {
-		logging.Errorf("Failed to read request body: %v", err)
+	// Read raw body if not provided
+	var err error
+	if body == nil {
+		body, err = c.GetRawData()
+		if err != nil {
+			logging.Errorf("Failed to read request body: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{
+				"success": false,
+				"message": "Failed to read request body",
+			})
+			return
+		}
+	}
+
+	// Check if body is empty
+	if len(body) == 0 {
+		logging.Errorf("Empty request body")
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
-			"message": "Failed to read request body",
+			"message": "Empty request body",
 		})
 		return
 	}
@@ -32,7 +46,12 @@ func processAppStoreNotification(environment string, c *gin.Context) {
 	// Parse notification
 	var notification models.AppStoreNotification
 	if err := json.Unmarshal(body, &notification); err != nil {
-		logging.Errorf("Failed to parse notification: %v", err)
+		// Log body preview for debugging (max 200 chars)
+		previewLen := 200
+		if len(body) < previewLen {
+			previewLen = len(body)
+		}
+		logging.Errorf("Failed to parse notification: %v, body length: %d, body preview: %s", err, len(body), string(body[:previewLen]))
 		c.JSON(http.StatusBadRequest, gin.H{
 			"success": false,
 			"message": "Invalid notification format",
@@ -96,13 +115,13 @@ func processAppStoreNotification(environment string, c *gin.Context) {
 // AppStoreProductionNotificationHandler handles production environment notifications
 // POST /api/appstore/notifications/production
 func AppStoreProductionNotificationHandler(c *gin.Context) {
-	processAppStoreNotification("production", c)
+	processAppStoreNotification("production", c, nil)
 }
 
 // AppStoreSandboxNotificationHandler handles sandbox environment notifications
 // POST /api/appstore/notifications/sandbox
 func AppStoreSandboxNotificationHandler(c *gin.Context) {
-	processAppStoreNotification("sandbox", c)
+	processAppStoreNotification("sandbox", c, nil)
 }
 
 // AppStoreWebhookHandler handles unified Apple webhook (both production and sandbox)
@@ -145,8 +164,8 @@ func AppStoreWebhookHandler(c *gin.Context) {
 		environment = "sandbox"
 	}
 
-	// Process notification
-	processAppStoreNotification(environment, c)
+	// Process notification with the already-read body
+	processAppStoreNotification(environment, c, body)
 }
 
 // parseTransactionInfo parses transaction info from base64 string
