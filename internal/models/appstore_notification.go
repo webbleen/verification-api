@@ -1,22 +1,24 @@
 package models
 
 // AppStoreNotification represents App Store Server Notification V2
+// Apple uses camelCase for field names
 type AppStoreNotification struct {
-	NotificationType   string `json:"notification_type"`
-	Subtype            string `json:"subtype,omitempty"`
-	NotificationUUID   string `json:"notification_uuid"`
-	DataVersion        string `json:"data_version"`
-	SignedDate         int64  `json:"signed_date"`
-	Data               NotificationData `json:"data"`
+	NotificationType   string          `json:"notificationType"`   // e.g., "SUBSCRIBED", "DID_RENEW"
+	Subtype            string          `json:"subtype,omitempty"`  // Optional subtype
+	NotificationUUID   string          `json:"notificationUUID"`    // Unique notification ID
+	DataVersion        string          `json:"dataVersion"`         // Version of the data format
+	SignedDate         int64           `json:"signedDate"`          // Timestamp when notification was signed
+	Data               NotificationData `json:"data"`               // Notification data payload
 }
 
 // NotificationData contains notification data
+// Apple uses camelCase for field names
 type NotificationData struct {
-	AppAppleID            int    `json:"app_apple_id"`
-	BundleID              string `json:"bundle_id"`
-	BundleVersion         string `json:"bundle_version"`
-	Environment           string `json:"environment"`
-	SignedTransactionInfo string `json:"signed_transaction_info"`
+	AppAppleID            int    `json:"appAppleId"`            // Apple App ID
+	BundleID              string `json:"bundleId"`              // App bundle identifier
+	BundleVersion         string `json:"bundleVersion"`         // App version
+	Environment           string `json:"environment"`           // "Sandbox" or "Production"
+	SignedTransactionInfo string `json:"signedTransactionInfo"`  // JWT containing transaction info
 }
 
 // TransactionInfo represents decoded transaction information

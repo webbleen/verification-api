@@ -43,6 +43,13 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 		return
 	}
 
+	// Log raw body for debugging (first 500 chars)
+	bodyPreviewLen := 500
+	if len(body) < bodyPreviewLen {
+		bodyPreviewLen = len(body)
+	}
+	logging.Infof("Raw notification body (first %d chars): %s", bodyPreviewLen, string(body[:bodyPreviewLen]))
+
 	// Parse notification
 	var notification models.AppStoreNotification
 	if err := json.Unmarshal(body, &notification); err != nil {
@@ -59,9 +66,13 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 		return
 	}
 
-	// Log notification details
-	logging.Infof("Received AppStore notification - type: %s, bundle_id: %s, environment: %s", 
-		notification.NotificationType, notification.Data.BundleID, notification.Data.Environment)
+	// Log parsed notification details
+	logging.Infof("Parsed notification - type: %s, bundle_id: %s, environment: %s, data_version: %s", 
+		notification.NotificationType, notification.Data.BundleID, notification.Data.Environment, notification.DataVersion)
+	
+	// Log full notification structure for debugging
+	notificationJSON, _ := json.Marshal(notification)
+	logging.Infof("Full notification structure: %s", string(notificationJSON))
 
 	// Handle heartbeat
 	if notification.NotificationType == "" {
