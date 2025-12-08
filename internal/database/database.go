@@ -44,11 +44,6 @@ func InitDatabase() error {
 		logging.Infof("Database migration skipped (AUTO_MIGRATE=false)")
 	}
 
-	// Insert default data
-	if err := insertDefaultData(); err != nil {
-		return fmt.Errorf("failed to insert default data: %w", err)
-	}
-
 	return nil
 }
 
@@ -149,29 +144,6 @@ func autoMigrate() error {
 		// VerificationCode, VerificationLog, and RateLimit removed - using Redis only
 		&models.Subscription{}, // 订阅表
 	)
-}
-
-// insertDefaultData inserts default data
-func insertDefaultData() error {
-	// Insert default project
-	defaultProject := models.Project{
-		ProjectID:   "default",
-		ProjectName: "Default Project",
-		APIKey:      "default-api-key",
-		FromName:    "UnionHub",
-		IsActive:    true,
-		Description: "Default project for testing and development",
-		MaxRequests: 1000, // 1000 requests per day
-	}
-
-	// Use FirstOrCreate to avoid duplicates
-	result := DB.Where("project_id = ?", "default").FirstOrCreate(&defaultProject)
-	if result.Error != nil {
-		return fmt.Errorf("failed to create default project: %w", result.Error)
-	}
-
-	logging.Infof("Default data inserted successfully")
-	return nil
 }
 
 // GetDB returns database instance

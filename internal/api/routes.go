@@ -92,16 +92,18 @@ func GetProjects(c *gin.Context) {
 
 // CreateProjectRequest represents create project request
 type CreateProjectRequest struct {
-	ProjectID    string `json:"project_id" binding:"required"`
-	ProjectName  string `json:"project_name" binding:"required"`
-	APIKey       string `json:"api_key" binding:"required"`
-	FromName     string `json:"from_name" binding:"required"`
-	TemplateID   string `json:"template_id"`
-	Description  string `json:"description"`
-	ContactEmail string `json:"contact_email"`
-	MaxRequests  int    `json:"max_requests"`
-	BundleID     string `json:"bundle_id"`    // iOS bundle ID (for subscription center)
-	PackageName  string `json:"package_name"` // Android package name (for subscription center)
+	ProjectID          string `json:"project_id" binding:"required"`
+	ProjectName        string `json:"project_name" binding:"required"`
+	APIKey             string `json:"api_key" binding:"required"`
+	FromName           string `json:"from_name" binding:"required"`
+	TemplateID         string `json:"template_id"`
+	Description        string `json:"description"`
+	ContactEmail       string `json:"contact_email"`
+	MaxRequests        int    `json:"max_requests"`
+	BundleID           string `json:"bundle_id"`            // iOS bundle ID (for subscription center)
+	PackageName        string `json:"package_name"`         // Android package name (for subscription center)
+	WebhookCallbackURL string `json:"webhook_callback_url"` // App Backend webhook URL (optional)
+	WebhookSecret      string `json:"webhook_secret"`       // Webhook signature secret (optional)
 }
 
 // CreateProject creates a new project
@@ -121,17 +123,19 @@ func CreateProject(c *gin.Context) {
 	}
 
 	project := &models.Project{
-		ProjectID:    req.ProjectID,
-		ProjectName:  req.ProjectName,
-		APIKey:       req.APIKey,
-		FromName:     req.FromName,
-		TemplateID:   req.TemplateID,
-		Description:  req.Description,
-		ContactEmail: req.ContactEmail,
-		MaxRequests:  req.MaxRequests,
-		BundleID:     req.BundleID,
-		PackageName:  req.PackageName,
-		IsActive:     true,
+		ProjectID:          req.ProjectID,
+		ProjectName:        req.ProjectName,
+		APIKey:             req.APIKey,
+		FromName:           req.FromName,
+		TemplateID:         req.TemplateID,
+		Description:        req.Description,
+		ContactEmail:       req.ContactEmail,
+		MaxRequests:        req.MaxRequests,
+		BundleID:           req.BundleID,
+		PackageName:        req.PackageName,
+		WebhookCallbackURL: req.WebhookCallbackURL,
+		WebhookSecret:      req.WebhookSecret,
+		IsActive:           true,
 	}
 
 	projectService := services.NewProjectService()
@@ -152,15 +156,17 @@ func CreateProject(c *gin.Context) {
 
 // UpdateProjectRequest represents update project request
 type UpdateProjectRequest struct {
-	ProjectName  string `json:"project_name"`
-	FromName     string `json:"from_name"`
-	TemplateID   string `json:"template_id"`
-	Description  string `json:"description"`
-	ContactEmail string `json:"contact_email"`
-	MaxRequests  int    `json:"max_requests"`
-	IsActive     *bool  `json:"is_active"`
-	BundleID     string `json:"bundle_id"`    // iOS bundle ID
-	PackageName  string `json:"package_name"` // Android package name
+	ProjectName        string `json:"project_name"`
+	FromName           string `json:"from_name"`
+	TemplateID         string `json:"template_id"`
+	Description        string `json:"description"`
+	ContactEmail       string `json:"contact_email"`
+	MaxRequests        int    `json:"max_requests"`
+	IsActive           *bool  `json:"is_active"`
+	BundleID           string `json:"bundle_id"`            // iOS bundle ID
+	PackageName        string `json:"package_name"`         // Android package name
+	WebhookCallbackURL string `json:"webhook_callback_url"` // App Backend webhook URL (optional)
+	WebhookSecret      string `json:"webhook_secret"`       // Webhook signature secret (optional)
 }
 
 // UpdateProject updates an existing project
@@ -211,6 +217,13 @@ func UpdateProject(c *gin.Context) {
 	}
 	if req.PackageName != "" {
 		updates["package_name"] = req.PackageName
+	}
+	// Webhook fields (empty string means remove webhook)
+	if req.WebhookCallbackURL != "" || c.Query("remove_webhook") == "true" {
+		updates["webhook_callback_url"] = req.WebhookCallbackURL
+	}
+	if req.WebhookSecret != "" || c.Query("remove_webhook") == "true" {
+		updates["webhook_secret"] = req.WebhookSecret
 	}
 
 	projectService := services.NewProjectService()

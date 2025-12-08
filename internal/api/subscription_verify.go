@@ -1,7 +1,10 @@
 package api
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 	"verification-api/internal/models"
 	"verification-api/internal/services"
@@ -9,11 +12,39 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// extractBundleIDFromJWT extracts bundle_id from signed_transaction JWT
+func extractBundleIDFromJWT(signedTransaction string) (string, error) {
+	// JWT format: header.payload.signature
+	parts := strings.Split(signedTransaction, ".")
+	if len(parts) != 3 {
+		return "", nil
+	}
+
+	// Decode payload (second part)
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return "", err
+	}
+
+	// Parse claims
+	var claims map[string]interface{}
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return "", err
+	}
+
+	// Extract bundle_id
+	if bundleID, ok := claims["bundleId"].(string); ok {
+		return bundleID, nil
+	}
+
+	return "", nil
+}
+
 // VerifySubscriptionRequest represents verify subscription request
 // Supports platform-specific fields as per industry standards
 type VerifySubscriptionRequest struct {
-	Platform string `json:"platform" binding:"required,oneof=ios android"` // ios or android
-	UserID   string `json:"user_id" binding:"required"`                     // User ID from the app
+	Platform  string `json:"platform" binding:"required,oneof=ios android"` // ios or android
+	UserID    string `json:"user_id" binding:"required"`                    // User ID from the app
 	ProductID string `json:"product_id" binding:"required"`                 // Product ID (required for both platforms)
 
 	// iOS specific fields
@@ -25,7 +56,7 @@ type VerifySubscriptionRequest struct {
 
 	// Legacy support (deprecated, use platform-specific fields)
 	ReceiptData string `json:"receipt_data,omitempty"` // Legacy: Base64 receipt (iOS) or purchase token (Android)
-	AppID       string `json:"app_id,omitempty"`        // Legacy: Bundle ID (iOS) or Package Name (Android)
+	AppID       string `json:"app_id,omitempty"`       // Legacy: Bundle ID (iOS) or Package Name (Android)
 }
 
 // VerifySubscriptionResponse represents verify subscription response
@@ -83,8 +114,11 @@ func VerifySubscription(c *gin.Context) {
 	var project *models.Project
 	var err error
 
-	// Try to get project from app_id (legacy) or extract from transaction
+	// Try to get project from app_id or extract from signed_transaction
+	var bundleID string
+	
 	if req.AppID != "" {
+		// Use provided app_id
 		if req.Platform == "ios" {
 			project, err = projectService.GetProjectByBundleID(req.AppID)
 		} else {
@@ -97,12 +131,28 @@ func VerifySubscription(c *gin.Context) {
 			})
 			return
 		}
+	} else if req.Platform == "ios" && req.SignedTransaction != "" {
+		// Try to extract bundle_id from signed_transaction JWT
+		bundleID, err = extractBundleIDFromJWT(req.SignedTransaction)
+		if err != nil || bundleID == "" {
+			c.JSON(http.StatusBadRequest, VerifySubscriptionResponse{
+				Success: false,
+				Message: "app_id is required (could not extract bundle_id from signed_transaction)",
+			})
+			return
+		}
+		project, err = projectService.GetProjectByBundleID(bundleID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, VerifySubscriptionResponse{
+				Success: false,
+				Message: "App not found for bundle_id: " + bundleID,
+			})
+			return
+		}
 	} else {
-		// TODO: Extract bundle_id/package_name from signed_transaction or use default project
-		// For now, return error if app_id is not provided
 		c.JSON(http.StatusBadRequest, VerifySubscriptionResponse{
 			Success: false,
-			Message: "app_id is required (or extract from signed_transaction)",
+			Message: "app_id is required (or provide signed_transaction for iOS)",
 		})
 		return
 	}
@@ -147,6 +197,14 @@ func VerifySubscription(c *gin.Context) {
 		return
 	}
 
+	// Notify App Backend via webhook if configured (optional, for pre-order flow)
+	if project.WebhookCallbackURL != "" {
+		go func() {
+			webhookNotifier := services.NewWebhookNotifier()
+			webhookNotifier.NotifyAppBackend(project.WebhookCallbackURL, project.WebhookSecret, subscription)
+		}()
+	}
+
 	// Check if subscription is active
 	isActive := subscription.Status == "active" && subscription.ExpiresDate.After(time.Now())
 
@@ -162,4 +220,3 @@ func VerifySubscription(c *gin.Context) {
 		AutoRenew:   subscription.AutoRenewStatus,
 	})
 }
-

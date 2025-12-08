@@ -150,6 +150,14 @@ func GooglePlayWebhookHandler(c *gin.Context) {
 		return
 	}
 
+	// Notify App Backend via webhook if configured
+	if project.WebhookCallbackURL != "" {
+		go func() {
+			webhookNotifier := services.NewWebhookNotifier()
+			webhookNotifier.NotifyAppBackend(project.WebhookCallbackURL, project.WebhookSecret, subscription)
+		}()
+	}
+
 	processingTime := time.Since(startTime)
 	logging.Infof("Google Play notification processed - type: %d, subscription: %s, time: %v",
 		notificationType, subscriptionID, processingTime)
@@ -159,4 +167,3 @@ func GooglePlayWebhookHandler(c *gin.Context) {
 		"message": "Notification processed successfully",
 	})
 }
-

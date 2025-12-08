@@ -31,6 +31,10 @@ type Project struct {
 	// App 识别字段（用于订阅中心）
 	BundleID    string `json:"bundle_id" gorm:"uniqueIndex"`    // iOS bundle ID，用于识别 iOS App
 	PackageName string `json:"package_name" gorm:"uniqueIndex"` // Android package name，用于识别 Android App
+
+	// Webhook 配置（用于通知 App Backend 订阅状态变化）
+	WebhookCallbackURL string `json:"webhook_callback_url" gorm:"type:varchar(500)"` // App Backend 的 webhook 地址
+	WebhookSecret      string `json:"webhook_secret" gorm:"type:varchar(255)"`       // 用于签名验证（可选）
 }
 
 // VerificationCode and RateLimit removed - using Redis only

@@ -272,10 +272,17 @@ func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, sign
 		return nil, fmt.Errorf("failed to parse transaction response: %w", err)
 	}
 
-	// Decode and parse signed transaction info
-	decoded, err := base64.StdEncoding.DecodeString(transactionResp.SignedTransactionInfo)
+	// signedTransactionInfo is a JWT (header.payload.signature), not base64-encoded JSON
+	// Parse it as JWT to extract claims
+	parts := strings.Split(transactionResp.SignedTransactionInfo, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid JWT format: expected 3 parts, got %d", len(parts))
+	}
+
+	// Decode payload (second part) - JWT uses base64.RawURLEncoding
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode signed transaction: %w", err)
+		return nil, fmt.Errorf("failed to decode JWT payload: %w", err)
 	}
 
 	var transactionInfo struct {
@@ -288,9 +295,10 @@ func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, sign
 		IsInBillingRetry      bool   `json:"isInBillingRetry"`
 		IsInGracePeriod       bool   `json:"isInGracePeriod"`
 		IsTrialPeriod         bool   `json:"isTrialPeriod"`
+		AppAccountToken       string `json:"appAccountToken"` // Extract appAccountToken
 	}
 
-	if err := json.Unmarshal(decoded, &transactionInfo); err != nil {
+	if err := json.Unmarshal(payload, &transactionInfo); err != nil {
 		return nil, fmt.Errorf("failed to parse transaction info: %w", err)
 	}
 
@@ -325,9 +333,16 @@ func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, sign
 		env = "sandbox"
 	}
 
+	// Use appAccountToken from API response if available, otherwise use provided userID
+	finalUserID := userID
+	if transactionInfo.AppAccountToken != "" {
+		finalUserID = transactionInfo.AppAccountToken
+		logging.Infof("Using appAccountToken from App Store Server API: %s", finalUserID)
+	}
+
 	// Create subscription model
 	subscription := &models.Subscription{
-		UserID:                userID,
+		UserID:                finalUserID,
 		ProjectID:             projectID,
 		Platform:              "ios",
 		Plan:                  plan,

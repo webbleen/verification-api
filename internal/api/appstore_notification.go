@@ -125,7 +125,7 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 	}
 
 	// Log parsed notification details
-	logging.Infof("Parsed notification - type: %s, bundle_id: %s, environment: %s, data_version: %s, uuid: %s", 
+	logging.Infof("Parsed notification - type: %s, bundle_id: %s, environment: %s, data_version: %s, uuid: %s",
 		notification.NotificationType, notification.Data.BundleID, notification.Data.Environment, notification.DataVersion, notification.NotificationUUID)
 
 	// Handle heartbeat
@@ -176,14 +176,27 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 	logging.Infof("Parsed transaction info - transaction_id: %s, original_transaction_id: %s, product_id: %s, app_account_token: %s",
 		transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, transactionInfo.ProductID, transactionInfo.AppAccountToken)
 
+	// Note: appAccountToken may not be present in webhook notifications
+	// It will be set when the client calls /api/subscription/verify with user_id
+	// The CreateOrUpdateSubscription function will handle binding user_id to existing subscriptions
+
 	// Handle notification by type
-	if err := handleNotificationByType(notification.NotificationType, transactionInfo, project.ProjectID, notification.Data.Environment); err != nil {
+	subscription, err := handleNotificationByType(notification.NotificationType, transactionInfo, project.ProjectID, notification.Data.Environment)
+	if err != nil {
 		logging.Errorf("Failed to handle notification: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"success": false,
 			"message": "Failed to process notification",
 		})
 		return
+	}
+
+	// Notify App Backend via webhook if configured
+	if subscription != nil && project.WebhookCallbackURL != "" {
+		go func() {
+			webhookNotifier := services.NewWebhookNotifier()
+			webhookNotifier.NotifyAppBackend(project.WebhookCallbackURL, project.WebhookSecret, subscription)
+		}()
 	}
 
 	processingTime := time.Since(startTime)
@@ -374,7 +387,8 @@ func parseTransactionInfo(signedTransactionInfo string) (*models.TransactionInfo
 }
 
 // handleNotificationByType handles notification by type
-func handleNotificationByType(notificationType string, transactionInfo *models.TransactionInfo, projectID, environment string) error {
+// Returns the updated subscription and error
+func handleNotificationByType(notificationType string, transactionInfo *models.TransactionInfo, projectID, environment string) (*models.Subscription, error) {
 	switch notificationType {
 	case "INITIAL_BUY", "SUBSCRIBED":
 		return handleInitialBuy(transactionInfo, projectID, environment)
@@ -390,13 +404,13 @@ func handleNotificationByType(notificationType string, transactionInfo *models.T
 		return handleExpired(transactionInfo, projectID)
 	default:
 		logging.Infof("Unknown notification type: %s", notificationType)
-		return nil
+		return nil, nil
 	}
 }
 
 // handleInitialBuy handles initial purchase
-func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, environment string) error {
-	logging.Infof("Handling INITIAL_BUY - transaction: %s, original_transaction: %s, product: %s, app_account_token: %s", 
+func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, environment string) (*models.Subscription, error) {
+	logging.Infof("Handling INITIAL_BUY - transaction: %s, original_transaction: %s, product: %s, app_account_token: %s",
 		transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, transactionInfo.ProductID, transactionInfo.AppAccountToken)
 
 	// Use appAccountToken as user_id if available
@@ -425,148 +439,163 @@ func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, enviro
 			ExpiresDate:           time.Unix(transactionInfo.ExpiresDateMS/1000, 0),
 			AutoRenewStatus:       transactionInfo.AutoRenewStatus == 1,
 		}
-		
+
 		if err := database.CreateSubscription(subscription); err != nil {
 			logging.Errorf("Failed to create subscription: %v", err)
-			return fmt.Errorf("failed to create subscription: %w", err)
+			return nil, fmt.Errorf("failed to create subscription: %w", err)
 		}
-		
+
 		if userID != "" {
-			logging.Infof("Created new subscription with user_id from appAccountToken - transaction: %s, original_transaction: %s, user_id: %s", 
+			logging.Infof("Created new subscription with user_id from appAccountToken - transaction: %s, original_transaction: %s, user_id: %s",
 				transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, userID)
 		} else {
-			logging.Infof("Created new subscription - transaction: %s, original_transaction: %s", 
+			logging.Infof("Created new subscription - transaction: %s, original_transaction: %s",
 				transactionInfo.TransactionID, transactionInfo.OriginalTransactionID)
 		}
-		return nil
+		return subscription, nil
 	}
 
 	// Update existing subscription
 	// If subscription has no user_id but we have appAccountToken, bind it
 	if subscription.UserID == "" && userID != "" {
 		subscription.UserID = userID
-		logging.Infof("Binding user_id from appAccountToken to existing subscription - original_transaction: %s, user_id: %s", 
+		logging.Infof("Binding user_id from appAccountToken to existing subscription - original_transaction: %s, user_id: %s",
 			transactionInfo.OriginalTransactionID, userID)
 	}
 
 	subscription.Status = "active"
 	subscription.ExpiresDate = time.Unix(transactionInfo.ExpiresDateMS/1000, 0)
 	subscription.AutoRenewStatus = transactionInfo.AutoRenewStatus == 1
-	
+
 	if err := database.UpdateSubscription(subscription); err != nil {
 		logging.Errorf("Failed to update subscription: %v", err)
-		return fmt.Errorf("failed to update subscription: %w", err)
+		return nil, fmt.Errorf("failed to update subscription: %w", err)
 	}
-	
-	logging.Infof("Updated existing subscription - transaction: %s, original_transaction: %s", 
+
+	logging.Infof("Updated existing subscription - transaction: %s, original_transaction: %s",
 		transactionInfo.TransactionID, transactionInfo.OriginalTransactionID)
-	return nil
+	return subscription, nil
 }
 
 // handleDidRenew handles renewal
-func handleDidRenew(transactionInfo *models.TransactionInfo, projectID string) error {
+func handleDidRenew(transactionInfo *models.TransactionInfo, projectID string) (*models.Subscription, error) {
 	logging.Infof("Handling DID_RENEW - transaction: %s, app_account_token: %s", transactionInfo.TransactionID, transactionInfo.AppAccountToken)
 
 	subscription, err := database.GetSubscriptionByOriginalTransactionID(projectID, transactionInfo.OriginalTransactionID)
 	if err != nil {
-		return fmt.Errorf("subscription not found: %w", err)
+		return nil, fmt.Errorf("subscription not found: %w", err)
 	}
 
 	// If subscription has no user_id but we have appAccountToken, bind it
 	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
 		subscription.UserID = transactionInfo.AppAccountToken
-		logging.Infof("Binding user_id from appAccountToken during renewal - original_transaction: %s, user_id: %s", 
+		logging.Infof("Binding user_id from appAccountToken during renewal - original_transaction: %s, user_id: %s",
 			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
 	subscription.Status = "active"
 	subscription.ExpiresDate = time.Unix(transactionInfo.ExpiresDateMS/1000, 0)
 	subscription.AutoRenewStatus = transactionInfo.AutoRenewStatus == 1
-	return database.UpdateSubscription(subscription)
+	if err := database.UpdateSubscription(subscription); err != nil {
+		return nil, err
+	}
+	return subscription, nil
 }
 
 // handleDidFailToRenew handles failed renewal
-func handleDidFailToRenew(transactionInfo *models.TransactionInfo, projectID string) error {
+func handleDidFailToRenew(transactionInfo *models.TransactionInfo, projectID string) (*models.Subscription, error) {
 	logging.Infof("Handling DID_FAIL_TO_RENEW - transaction: %s", transactionInfo.TransactionID)
 
 	subscription, err := database.GetSubscriptionByOriginalTransactionID(projectID, transactionInfo.OriginalTransactionID)
 	if err != nil {
-		return fmt.Errorf("subscription not found: %w", err)
+		return nil, fmt.Errorf("subscription not found: %w", err)
 	}
 
 	// If subscription has no user_id but we have appAccountToken, bind it
 	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
 		subscription.UserID = transactionInfo.AppAccountToken
-		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s", 
+		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s",
 			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
 	subscription.Status = "failed"
 	subscription.AutoRenewStatus = false
-	return database.UpdateSubscription(subscription)
+	if err := database.UpdateSubscription(subscription); err != nil {
+		return nil, err
+	}
+	return subscription, nil
 }
 
 // handleDidCancel handles cancellation
-func handleDidCancel(transactionInfo *models.TransactionInfo, projectID string) error {
+func handleDidCancel(transactionInfo *models.TransactionInfo, projectID string) (*models.Subscription, error) {
 	logging.Infof("Handling DID_CANCEL - transaction: %s", transactionInfo.TransactionID)
 
 	subscription, err := database.GetSubscriptionByOriginalTransactionID(projectID, transactionInfo.OriginalTransactionID)
 	if err != nil {
-		return fmt.Errorf("subscription not found: %w", err)
+		return nil, fmt.Errorf("subscription not found: %w", err)
 	}
 
 	// If subscription has no user_id but we have appAccountToken, bind it
 	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
 		subscription.UserID = transactionInfo.AppAccountToken
-		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s", 
+		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s",
 			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
 	subscription.Status = "cancelled"
 	subscription.AutoRenewStatus = false
-	return database.UpdateSubscription(subscription)
+	if err := database.UpdateSubscription(subscription); err != nil {
+		return nil, err
+	}
+	return subscription, nil
 }
 
 // handleDidRefund handles refund
-func handleDidRefund(transactionInfo *models.TransactionInfo, projectID string) error {
+func handleDidRefund(transactionInfo *models.TransactionInfo, projectID string) (*models.Subscription, error) {
 	logging.Infof("Handling DID_REFUND - transaction: %s", transactionInfo.TransactionID)
 
 	subscription, err := database.GetSubscriptionByOriginalTransactionID(projectID, transactionInfo.OriginalTransactionID)
 	if err != nil {
-		return fmt.Errorf("subscription not found: %w", err)
+		return nil, fmt.Errorf("subscription not found: %w", err)
 	}
 
 	// If subscription has no user_id but we have appAccountToken, bind it
 	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
 		subscription.UserID = transactionInfo.AppAccountToken
-		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s", 
+		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s",
 			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
 	subscription.Status = "refunded"
 	subscription.AutoRenewStatus = false
-	return database.UpdateSubscription(subscription)
+	if err := database.UpdateSubscription(subscription); err != nil {
+		return nil, err
+	}
+	return subscription, nil
 }
 
 // handleExpired handles expiration
-func handleExpired(transactionInfo *models.TransactionInfo, projectID string) error {
+func handleExpired(transactionInfo *models.TransactionInfo, projectID string) (*models.Subscription, error) {
 	logging.Infof("Handling EXPIRED - transaction: %s", transactionInfo.TransactionID)
 
 	subscription, err := database.GetSubscriptionByOriginalTransactionID(projectID, transactionInfo.OriginalTransactionID)
 	if err != nil {
-		return fmt.Errorf("subscription not found: %w", err)
+		return nil, fmt.Errorf("subscription not found: %w", err)
 	}
 
 	// If subscription has no user_id but we have appAccountToken, bind it
 	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
 		subscription.UserID = transactionInfo.AppAccountToken
-		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s", 
+		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s",
 			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
 	subscription.Status = "expired"
 	subscription.AutoRenewStatus = false
-	return database.UpdateSubscription(subscription)
+	if err := database.UpdateSubscription(subscription); err != nil {
+		return nil, err
+	}
+	return subscription, nil
 }
 
 // getPlanFromProductID determines plan from product ID
@@ -580,4 +609,3 @@ func getPlanFromProductID(productID string) string {
 		return "basic"
 	}
 }
-
