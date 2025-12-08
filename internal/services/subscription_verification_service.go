@@ -338,6 +338,9 @@ func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, sign
 	if transactionInfo.AppAccountToken != "" {
 		finalUserID = transactionInfo.AppAccountToken
 		logging.Infof("Using appAccountToken from App Store Server API: %s", finalUserID)
+	} else {
+		// appAccountToken is empty (client didn't set it), use provided userID
+		logging.Infof("No appAccountToken in API response, using provided userID: %s", finalUserID)
 	}
 
 	// Create subscription model
