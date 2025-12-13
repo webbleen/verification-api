@@ -231,14 +231,30 @@ func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, sign
 		return nil, fmt.Errorf("failed to get project: %w", err)
 	}
 
+	// 添加详细日志：项目信息
+	logging.Infof("验证订阅 - ProjectID: %s, ProjectName: %s, BundleID: %s, TransactionID: %s, UserID: %s, Environment: %s",
+		project.ProjectID, project.ProjectName, project.BundleID, actualTransactionID, userID, environment)
+
 	// Generate JWT token for App Store Server API authentication
 	authToken, err := s.generateAppStoreJWT(project.BundleID)
 	if err != nil {
+		// 添加详细日志：JWT 生成失败
+		logging.Errorf("生成 App Store JWT 失败 - ProjectID: %s, ProjectName: %s, BundleID: %s, Error: %v",
+			project.ProjectID, project.ProjectName, project.BundleID, err)
 		return nil, fmt.Errorf("failed to generate auth token: %w", err)
 	}
 
+	// 添加详细日志：JWT 生成成功
+	logging.Infof("App Store JWT 生成成功 - ProjectID: %s, BundleID: %s, JWT长度: %d",
+		project.ProjectID, project.BundleID, len(authToken))
+
 	// Call App Store Server API
 	apiURL := fmt.Sprintf("https://api.storekit.itunes.apple.com/inApps/v1/transactions/%s", actualTransactionID)
+
+	// 添加详细日志：API 调用信息
+	logging.Infof("调用 App Store Server API - ProjectID: %s, ProjectName: %s, BundleID: %s, URL: %s, Environment: %s",
+		project.ProjectID, project.ProjectName, project.BundleID, apiURL, environment)
+
 	req, err := http.NewRequest("GET", apiURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -249,12 +265,18 @@ func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, sign
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
+		// 添加详细日志：网络请求失败
+		logging.Errorf("App Store Server API 网络请求失败 - ProjectID: %s, ProjectName: %s, BundleID: %s, URL: %s, Error: %v",
+			project.ProjectID, project.ProjectName, project.BundleID, apiURL, err)
 		return nil, fmt.Errorf("failed to call App Store Server API: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
+		// 添加详细日志：API 返回错误
+		logging.Errorf("App Store Server API 返回错误 - ProjectID: %s, ProjectName: %s, BundleID: %s, StatusCode: %d, Response: %s",
+			project.ProjectID, project.ProjectName, project.BundleID, resp.StatusCode, string(body))
 		return nil, fmt.Errorf("App Store Server API returned status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -378,6 +400,34 @@ func (s *SubscriptionVerificationService) generateAppStoreJWT(bundleID string) (
 	issuerID := config.AppConfig.AppStoreIssuerID
 	privateKey := config.AppConfig.AppStorePrivateKey
 
+	// 添加详细日志：配置检查
+	logging.Infof("检查 App Store API 配置 - KeyID存在: %v, IssuerID存在: %v, PrivateKey存在: %v, BundleID: %s",
+		keyID != "", issuerID != "", privateKey != "", bundleID)
+
+	// 添加详细日志：配置值（隐藏敏感信息）
+	if keyID != "" {
+		logging.Infof("App Store KeyID: %s (长度: %d)", keyID, len(keyID))
+	} else {
+		logging.Errorf("App Store KeyID 未配置")
+	}
+
+	if issuerID != "" {
+		logging.Infof("App Store IssuerID: %s (长度: %d)", issuerID, len(issuerID))
+	} else {
+		logging.Errorf("App Store IssuerID 未配置")
+	}
+
+	if privateKey != "" {
+		// 只显示前10个字符，避免泄露完整私钥
+		previewLen := 10
+		if len(privateKey) < previewLen {
+			previewLen = len(privateKey)
+		}
+		logging.Infof("App Store PrivateKey: 已配置 (长度: %d, 前%d字符: %s...)", len(privateKey), previewLen, privateKey[:previewLen])
+	} else {
+		logging.Errorf("App Store PrivateKey 未配置")
+	}
+
 	if keyID == "" || issuerID == "" || privateKey == "" {
 		return "", fmt.Errorf("App Store API credentials not configured")
 	}
@@ -385,8 +435,13 @@ func (s *SubscriptionVerificationService) generateAppStoreJWT(bundleID string) (
 	// Load private key from environment variable (base64 or PEM)
 	key, err := loadPrivateKeyFromString(privateKey)
 	if err != nil {
+		// 添加详细日志：私钥加载失败
+		logging.Errorf("加载 App Store 私钥失败 - Error: %v, PrivateKey长度: %d", err, len(privateKey))
 		return "", fmt.Errorf("failed to load private key: %w", err)
 	}
+
+	// 添加详细日志：私钥加载成功
+	logging.Infof("App Store 私钥加载成功 - Key类型: ECDSA")
 
 	// Create JWT token
 	now := time.Now()
@@ -404,10 +459,19 @@ func (s *SubscriptionVerificationService) generateAppStoreJWT(bundleID string) (
 
 	token.Header["kid"] = keyID
 
+	// 添加详细日志：JWT Claims
+	logging.Infof("生成 App Store JWT - Issuer: %s, KeyID: %s, BundleID: %s, IAT: %d, EXP: %d",
+		issuerID, keyID, bundleID, now.Unix(), now.Add(20*time.Minute).Unix())
+
 	tokenString, err := token.SignedString(key)
 	if err != nil {
+		// 添加详细日志：JWT 签名失败
+		logging.Errorf("App Store JWT 签名失败 - Error: %v", err)
 		return "", fmt.Errorf("failed to sign token: %w", err)
 	}
+
+	// 添加详细日志：JWT 生成成功
+	logging.Infof("App Store JWT 生成成功 - JWT长度: %d", len(tokenString))
 
 	return tokenString, nil
 }

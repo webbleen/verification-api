@@ -8,6 +8,7 @@ import (
 	"time"
 	"verification-api/internal/models"
 	"verification-api/internal/services"
+	"verification-api/pkg/logging"
 
 	"github.com/gin-gonic/gin"
 )
@@ -116,7 +117,7 @@ func VerifySubscription(c *gin.Context) {
 
 	// Try to get project from app_id or extract from signed_transaction
 	var bundleID string
-	
+
 	if req.AppID != "" {
 		// Use provided app_id
 		if req.Platform == "ios" {
@@ -157,6 +158,10 @@ func VerifySubscription(c *gin.Context) {
 		return
 	}
 
+	// 添加详细日志：项目信息
+	logging.Infof("验证订阅请求 - ProjectID: %s, ProjectName: %s, BundleID: %s, UserID: %s, TransactionID: %s, ProductID: %s, Platform: %s",
+		project.ProjectID, project.ProjectName, project.BundleID, req.UserID, req.TransactionID, req.ProductID, req.Platform)
+
 	// Verify receipt/token
 	verificationService := services.NewSubscriptionVerificationService()
 	var subscription *models.Subscription
@@ -190,12 +195,20 @@ func VerifySubscription(c *gin.Context) {
 	}
 
 	if err != nil {
+		// 添加详细日志：验证失败
+		logging.Errorf("订阅验证失败 - ProjectID: %s, ProjectName: %s, BundleID: %s, UserID: %s, TransactionID: %s, Error: %v",
+			project.ProjectID, project.ProjectName, project.BundleID, req.UserID, req.TransactionID, err)
 		c.JSON(http.StatusBadRequest, VerifySubscriptionResponse{
 			Success: false,
 			Message: "Verification failed: " + err.Error(),
 		})
 		return
 	}
+
+	// 添加详细日志：验证成功
+	isActive := subscription.Status == "active" && subscription.ExpiresDate.After(time.Now())
+	logging.Infof("订阅验证成功 - ProjectID: %s, UserID: %s, TransactionID: %s, Status: %s, IsActive: %v, ExpiresDate: %s",
+		project.ProjectID, req.UserID, subscription.TransactionID, subscription.Status, isActive, subscription.ExpiresDate.Format(time.RFC3339))
 
 	// Notify App Backend via webhook if configured (optional, for pre-order flow)
 	if project.WebhookCallbackURL != "" {
@@ -204,9 +217,6 @@ func VerifySubscription(c *gin.Context) {
 			webhookNotifier.NotifyAppBackend(project.WebhookCallbackURL, project.WebhookSecret, subscription)
 		}()
 	}
-
-	// Check if subscription is active
-	isActive := subscription.Status == "active" && subscription.ExpiresDate.After(time.Now())
 
 	c.JSON(http.StatusOK, VerifySubscriptionResponse{
 		Success:     true,
