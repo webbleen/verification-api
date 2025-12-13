@@ -125,7 +125,7 @@ func VerifyApple(c *gin.Context) {
 		// 注意：这里需要先获取 appAccountToken，但 subscription 中可能没有
 		// 我们需要从 App Store Server API 响应中获取 appAccountToken
 		// 暂时返回错误，因为无法确定 user_id
-		logging.Warnf("无法确定 user_id - TransactionID: %s, Subscription.UserID 为空", req.TransactionID)
+		logging.Infof("无法确定 user_id - TransactionID: %s, Subscription.UserID 为空", req.TransactionID)
 		c.JSON(http.StatusBadRequest, VerifyAppleResponse{
 			Success: false,
 		})

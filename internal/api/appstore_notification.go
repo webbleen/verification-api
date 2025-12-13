@@ -187,7 +187,7 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 		if baseURL != "" {
 			deviceID, err := queryDeviceIDFromAppBackend(baseURL, transactionInfo.AppAccountToken)
 			if err != nil {
-				logging.Warnf("Failed to query device_id from App Backend: %v, will use appAccountToken (UUID) as user_id", err)
+				logging.Infof("Failed to query device_id from App Backend: %v, will use appAccountToken (UUID) as user_id", err)
 				// Fallback: use appAccountToken as user_id (UUID format)
 				// This is acceptable as appAccountToken is already a UUID
 			} else if deviceID != "" {
@@ -434,7 +434,7 @@ func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, enviro
 	// Use appAccountToken as user_id (set by client during purchase)
 	userID := transactionInfo.AppAccountToken
 	if userID == "" {
-		logging.Warnf("No appAccountToken in transaction - user_id will be empty. This should not happen if client sets applicationUserName during purchase.")
+		logging.Infof("No appAccountToken in transaction - user_id will be empty. This should not happen if client sets applicationUserName during purchase.")
 	}
 
 	// Find existing subscription by original transaction ID
