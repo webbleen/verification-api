@@ -445,7 +445,6 @@ func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, enviro
 			ProjectID:             projectID,
 			AppAccountToken:       userID, // Use appAccountToken if available
 			Platform:              "ios",
-			Plan:                  getPlanFromProductID(transactionInfo.ProductID),
 			Status:                "active",
 			StartDate:             time.Unix(transactionInfo.PurchaseDateMS/1000, 0),
 			EndDate:               time.Unix(transactionInfo.ExpiresDateMS/1000, 0),
@@ -481,6 +480,9 @@ func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, enviro
 			transactionInfo.OriginalTransactionID, userID)
 	}
 
+	// Update ProductID if it changed (e.g., upgrade from monthly to yearly)
+	subscription.ProductID = transactionInfo.ProductID
+	subscription.TransactionID = transactionInfo.TransactionID
 	subscription.Status = "active"
 	subscription.ExpiresDate = time.Unix(transactionInfo.ExpiresDateMS/1000, 0)
 	subscription.AutoRenewStatus = transactionInfo.AutoRenewStatus == 1
@@ -677,16 +679,4 @@ func queryDeviceIDFromAppBackend(baseURL, appAccountToken string) (string, error
 	}
 
 	return "", fmt.Errorf("device_id not found in response")
-}
-
-// getPlanFromProductID determines plan from product ID
-func getPlanFromProductID(productID string) string {
-	switch productID {
-	case "com.dailyzen.monthly", "monthly":
-		return "monthly"
-	case "com.dailyzen.yearly", "yearly":
-		return "yearly"
-	default:
-		return "basic"
-	}
 }

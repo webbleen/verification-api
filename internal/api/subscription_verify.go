@@ -67,7 +67,6 @@ type VerifySubscriptionResponse struct {
 	IsActive    bool   `json:"is_active"`
 	Platform    string `json:"platform,omitempty"`     // Platform: ios or android
 	ExpiresDate string `json:"expires_date,omitempty"` // ISO 8601 format
-	Plan        string `json:"plan,omitempty"`
 	ProductID   string `json:"product_id,omitempty"`
 	AutoRenew   bool   `json:"auto_renew,omitempty"`
 
@@ -225,7 +224,6 @@ func VerifySubscription(c *gin.Context) {
 		Platform:    subscription.Platform,
 		ExpiresDate: subscription.ExpiresDate.Format(time.RFC3339),
 		ExpiresAt:   subscription.ExpiresDate.Format(time.RFC3339), // Legacy support
-		Plan:        subscription.Plan,
 		ProductID:   subscription.ProductID,
 		AutoRenew:   subscription.AutoRenewStatus,
 	})

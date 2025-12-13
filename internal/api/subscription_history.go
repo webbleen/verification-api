@@ -15,7 +15,6 @@ type SubscriptionHistoryItem struct {
 	ID                  uint      `json:"id"`
 	AppAccountToken     string    `json:"app_account_token"`
 	Platform            string    `json:"platform"`
-	Plan                string    `json:"plan"`
 	Status              string    `json:"status"`
 	ProductID           string    `json:"product_id"`
 	TransactionID       string    `json:"transaction_id"`
@@ -94,7 +93,6 @@ func GetSubscriptionHistory(c *gin.Context) {
 			ID:                  sub.ID,
 			AppAccountToken:     sub.AppAccountToken,
 			Platform:            sub.Platform,
-			Plan:                sub.Plan,
 			Status:              sub.Status,
 			ProductID:           sub.ProductID,
 			TransactionID:       sub.TransactionID,

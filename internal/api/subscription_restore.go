@@ -34,7 +34,6 @@ type SubscriptionInfo struct {
 	IsActive    bool   `json:"is_active"`
 	Status      string `json:"status"`
 	ExpiresDate string `json:"expires_date,omitempty"`
-	Plan        string `json:"plan,omitempty"`
 	ProductID   string `json:"product_id,omitempty"`
 	AutoRenew   bool   `json:"auto_renew,omitempty"`
 }
@@ -47,7 +46,6 @@ type RestoreSubscriptionResponse struct {
 	// Legacy fields (for backward compatibility)
 	IsActive  bool   `json:"is_active,omitempty"`
 	ExpiresAt string `json:"expires_at,omitempty"`
-	Plan      string `json:"plan,omitempty"`
 	ProductID string `json:"product_id,omitempty"`
 }
 
@@ -130,7 +128,6 @@ func RestoreSubscription(c *gin.Context) {
 					IsActive:    isActive,
 					Status:      subscription.Status,
 					ExpiresDate: subscription.ExpiresDate.Format(time.RFC3339),
-					Plan:        subscription.Plan,
 					ProductID:   subscription.ProductID,
 					AutoRenew:   subscription.AutoRenewStatus,
 				})
@@ -164,7 +161,6 @@ func RestoreSubscription(c *gin.Context) {
 				IsActive:    isActive,
 				Status:      sub.Status,
 				ExpiresDate: sub.ExpiresDate.Format(time.RFC3339),
-				Plan:        sub.Plan,
 				ProductID:   sub.ProductID,
 				AutoRenew:   sub.AutoRenewStatus,
 			})
@@ -201,7 +197,6 @@ func RestoreSubscription(c *gin.Context) {
 	if latestActive != nil {
 		response.IsActive = latestActive.IsActive
 		response.ExpiresAt = latestActive.ExpiresDate
-		response.Plan = latestActive.Plan
 		response.ProductID = latestActive.ProductID
 	}
 

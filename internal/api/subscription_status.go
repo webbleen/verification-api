@@ -17,7 +17,6 @@ type GetSubscriptionStatusResponse struct {
 	IsActive    bool   `json:"is_active"`
 	Platform    string `json:"platform,omitempty"`     // Platform: ios or android
 	Status      string `json:"status,omitempty"`        // Subscription status
-	Plan        string `json:"plan,omitempty"`
 	ExpiresDate string `json:"expires_date,omitempty"` // ISO 8601 format
 	ProductID   string `json:"product_id,omitempty"`
 	AutoRenew   bool   `json:"auto_renew,omitempty"`
@@ -81,7 +80,6 @@ func GetSubscriptionStatus(c *gin.Context) {
 		IsActive:    isActive,
 		Platform:    subscription.Platform,
 		Status:      subscription.Status,
-		Plan:        subscription.Plan,
 		ExpiresDate: subscription.ExpiresDate.Format(time.RFC3339),
 		ExpiresAt:   subscription.ExpiresDate.Format(time.RFC3339), // Legacy support
 		ProductID:   subscription.ProductID,

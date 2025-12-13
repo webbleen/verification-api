@@ -137,7 +137,6 @@ func CreateOrUpdateSubscription(subscription *models.Subscription) error {
 		existingSubscription.AutoRenewStatus = subscription.AutoRenewStatus
 		existingSubscription.LatestReceipt = subscription.LatestReceipt
 		existingSubscription.LatestReceiptInfo = subscription.LatestReceiptInfo
-		existingSubscription.Plan = subscription.Plan
 		existingSubscription.ProductID = subscription.ProductID
 		existingSubscription.TransactionID = subscription.TransactionID
 		existingSubscription.Environment = subscription.Environment

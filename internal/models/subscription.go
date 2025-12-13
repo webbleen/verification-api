@@ -14,9 +14,6 @@ type Subscription struct {
 	ProjectID       string `json:"project_id" gorm:"not null;index"`                                 // 项目ID，关联到project表
 	Platform        string `json:"platform" gorm:"size:20;default:'ios';index"`                      // 平台：ios 或 android
 
-	// 订阅计划字段
-	Plan string `json:"plan" gorm:"not null;size:50"` // 订阅计划：basic(基础版)、monthly(月度高级版)、yearly(年度高级版)
-
 	// 订阅状态字段
 	Status string `json:"status" gorm:"not null;size:20;index"` // 订阅状态：active(激活)、inactive(未激活)、cancelled(已取消)、expired(过期)
 

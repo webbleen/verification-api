@@ -147,15 +147,11 @@ func (s *SubscriptionVerificationService) verifyWithApple(receiptData, environme
 		status = "expired"
 	}
 
-	// Determine plan from product ID
-	plan := getPlanFromProductID(latestReceiptInfo.ProductID)
-
 	// Create subscription model
 	subscription := &models.Subscription{
 		AppAccountToken:       userID,
 		ProjectID:             projectID,
 		Platform:              "ios",
-		Plan:                  plan,
 		Status:                status,
 		StartDate:             purchaseDate,
 		EndDate:               expiresDate,
@@ -340,13 +336,6 @@ func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, sign
 		status = "grace_period"
 	}
 
-	// Determine plan from product ID
-	plan := getPlanFromProductID(transactionInfo.ProductID)
-	if productID != "" && productID != transactionInfo.ProductID {
-		// Use provided product_id if different
-		plan = getPlanFromProductID(productID)
-	}
-
 	// Normalize environment
 	env := strings.ToLower(transactionInfo.Environment)
 	if env == "production" {
@@ -370,7 +359,6 @@ func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, sign
 		AppAccountToken:       finalUserID,
 		ProjectID:             projectID,
 		Platform:              "ios",
-		Plan:                  plan,
 		Status:                status,
 		StartDate:             purchaseDate,
 		EndDate:               expiresDate,
@@ -531,16 +519,4 @@ func parseAppleTimestamp(timestampStr string) (time.Time, error) {
 		return time.Time{}, err
 	}
 	return time.Unix(timestamp/1000, (timestamp%1000)*1000000), nil
-}
-
-// getPlanFromProductID determines plan from product ID
-func getPlanFromProductID(productID string) string {
-	switch productID {
-	case "com.dailyzen.monthly", "monthly":
-		return "monthly"
-	case "com.dailyzen.yearly", "yearly":
-		return "yearly"
-	default:
-		return "basic"
-	}
 }
