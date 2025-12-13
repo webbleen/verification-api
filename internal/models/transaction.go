@@ -10,12 +10,12 @@ type Transaction struct {
 	BaseModel
 
 	// 关联字段
-	ProjectID       string `json:"project_id" gorm:"not null;index"`        // 项目ID
+	ProjectID       string `json:"project_id" gorm:"not null;index"`       // 项目ID
 	AppAccountToken string `json:"app_account_token" gorm:"size:36;index"` // App Account Token (UUID)
 
 	// 交易标识
-	TransactionID         string `json:"transaction_id" gorm:"not null;size:100;uniqueIndex"`    // 交易ID
-	OriginalTransactionID string `json:"original_transaction_id" gorm:"size:100;index"`         // 原始交易ID（用于关联续订）
+	TransactionID         string `json:"transaction_id" gorm:"not null;size:100;uniqueIndex"` // 交易ID
+	OriginalTransactionID string `json:"original_transaction_id" gorm:"size:100;index"`       // 原始交易ID（用于关联续订）
 
 	// 产品信息
 	ProductID string `json:"product_id" gorm:"size:100"` // 产品ID
@@ -34,4 +34,3 @@ type Transaction struct {
 func (Transaction) TableName() string {
 	return "transactions"
 }
-

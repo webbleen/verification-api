@@ -14,13 +14,13 @@ import (
 // VerifyAppleRequest 验证 Apple 交易请求
 type VerifyAppleRequest struct {
 	TransactionID string `json:"transaction_id" binding:"required"` // 交易ID
-	ProjectID    string `json:"project_id,omitempty"`               // 项目ID（可选，如果不提供则从 header 获取）
+	ProjectID     string `json:"project_id,omitempty"`              // 项目ID（可选，如果不提供则从 header 获取）
 }
 
 // VerifyAppleResponse 验证 Apple 交易响应
 type VerifyAppleResponse struct {
-	Success     bool                `json:"success"`
-	UserID      string              `json:"user_id"`      // device_id（从 appAccountToken 解析）
+	Success      bool               `json:"success"`
+	UserID       string             `json:"user_id"`      // device_id（从 appAccountToken 解析）
 	Entitlements EntitlementsResult `json:"entitlements"` // 权益信息
 }
 
@@ -98,7 +98,7 @@ func VerifyApple(c *gin.Context) {
 
 	// 调用验证服务
 	verificationService := services.NewSubscriptionVerificationService()
-	
+
 	// 使用空字符串作为 userID，因为我们会从 appAccountToken 解析
 	subscription, err := verificationService.VerifyAppleTransaction(
 		projectID,
@@ -117,15 +117,41 @@ func VerifyApple(c *gin.Context) {
 	}
 
 	// 从 subscription 获取 user_id（device_id）
-	// 如果 subscription.UserID 为空，说明 appAccountToken 还未绑定
-	// 此时需要从 App Backend 查询映射关系
-	userID := subscription.UserID
-	if userID == "" {
-		// 尝试从 App Backend 查询映射关系
-		// 注意：这里需要先获取 appAccountToken，但 subscription 中可能没有
-		// 我们需要从 App Store Server API 响应中获取 appAccountToken
-		// 暂时返回错误，因为无法确定 user_id
-		logging.Infof("无法确定 user_id - TransactionID: %s, Subscription.UserID 为空", req.TransactionID)
+	// subscription.UserID 实际上是 appAccountToken (UUID)，需要通过 App Backend 查询映射关系获取真正的 device_id
+	appAccountToken := subscription.UserID // 这是 UUID
+	userID := ""
+
+	if appAccountToken != "" {
+		// 通过 App Backend API 查询映射关系，获取真正的 device_id
+		if project.WebhookCallbackURL != "" {
+			baseURL := extractBaseURL(project.WebhookCallbackURL)
+			if baseURL != "" {
+				deviceID, err := queryDeviceIDFromAppBackend(baseURL, appAccountToken)
+				if err != nil {
+					logging.Infof("查询 device_id 失败: %v，使用 appAccountToken 作为 user_id", err)
+					// 如果查询失败，使用 appAccountToken 作为 user_id（虽然不理想，但不会导致错误）
+					userID = appAccountToken
+				} else if deviceID != "" {
+					userID = deviceID
+					logging.Infof("从 appAccountToken 解析 device_id 成功 - AppAccountToken: %s, DeviceID: %s", appAccountToken, deviceID)
+				} else {
+					// 如果查询返回空，使用 appAccountToken 作为 user_id
+					userID = appAccountToken
+					logging.Infof("App Backend 未找到映射关系，使用 appAccountToken 作为 user_id: %s", appAccountToken)
+				}
+			} else {
+				// 无法提取 baseURL，使用 appAccountToken 作为 user_id
+				userID = appAccountToken
+				logging.Infof("无法提取 App Backend baseURL，使用 appAccountToken 作为 user_id: %s", appAccountToken)
+			}
+		} else {
+			// 没有配置 webhook URL，使用 appAccountToken 作为 user_id
+			userID = appAccountToken
+			logging.Infof("未配置 webhook URL，使用 appAccountToken 作为 user_id: %s", appAccountToken)
+		}
+	} else {
+		// appAccountToken 为空，无法确定 user_id
+		logging.Infof("无法确定 user_id - TransactionID: %s, appAccountToken 为空", req.TransactionID)
 		c.JSON(http.StatusBadRequest, VerifyAppleResponse{
 			Success: false,
 		})
@@ -140,13 +166,14 @@ func VerifyApple(c *gin.Context) {
 	}
 
 	// 检查是否有终身购买（通过查询 transactions 表，type = non_consumable）
-	// 注意：这里需要先查询 transactions 表，但目前 transactions 表可能还没有数据
-	// 暂时返回 false，后续可以通过 Server Notification 更新
+	// 注意：使用 appAccountToken 查询，因为 transactions 表中存储的是 appAccountToken
 	hasLifetime := false
-	var transaction models.Transaction
-	if err := database.GetDB().Where("project_id = ? AND app_account_token = ? AND type = ?", 
-		projectID, userID, "non_consumable").First(&transaction).Error; err == nil {
-		hasLifetime = true
+	if appAccountToken != "" {
+		var transaction models.Transaction
+		if err := database.GetDB().Where("project_id = ? AND app_account_token = ? AND type = ?",
+			projectID, appAccountToken, "non_consumable").First(&transaction).Error; err == nil {
+			hasLifetime = true
+		}
 	}
 
 	logging.Infof("验证 Apple 交易成功 - ProjectID: %s, UserID: %s, IsActive: %v, ExpiresAt: %s",
@@ -167,4 +194,3 @@ func VerifyApple(c *gin.Context) {
 		},
 	})
 }
-

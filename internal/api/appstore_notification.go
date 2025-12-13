@@ -179,7 +179,7 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 	// Note: appAccountToken is a UUID set by the client during purchase (applicationUserName parameter)
 	// We need to query App Backend to get the actual device_id (user_id) from appAccountToken
 	// If appAccountToken is empty, we cannot determine user_id (should not happen in normal flow)
-	
+
 	// Query device_id from App Backend using appAccountToken
 	if transactionInfo.AppAccountToken != "" && project.WebhookCallbackURL != "" {
 		// Extract base URL from webhook callback URL (e.g., https://api.example.com/webhooks/unionhub -> https://api.example.com)
@@ -646,36 +646,36 @@ func extractBaseURL(webhookURL string) string {
 // queryDeviceIDFromAppBackend queries App Backend to get device_id from app_account_token
 func queryDeviceIDFromAppBackend(baseURL, appAccountToken string) (string, error) {
 	url := fmt.Sprintf("%s/api/app-account-token/device-id?app_account_token=%s", baseURL, appAccountToken)
-	
+
 	client := &http.Client{
 		Timeout: 5 * time.Second,
 	}
-	
+
 	resp, err := client.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("failed to query App Backend: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("App Backend returned status %d", resp.StatusCode)
 	}
-	
+
 	var result map[string]interface{}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", fmt.Errorf("failed to decode response: %w", err)
 	}
-	
+
 	if success, ok := result["success"].(bool); !ok || !success {
 		return "", fmt.Errorf("App Backend query failed")
 	}
-	
+
 	if data, ok := result["data"].(map[string]interface{}); ok {
 		if deviceID, ok := data["device_id"].(string); ok {
 			return deviceID, nil
 		}
 	}
-	
+
 	return "", fmt.Errorf("device_id not found in response")
 }
 
