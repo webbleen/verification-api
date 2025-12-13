@@ -513,6 +513,17 @@ func handleDidRenew(transactionInfo *models.TransactionInfo, projectID string) (
 			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
+	// Update ProductID if it changed (e.g., upgrade from monthly to yearly)
+	// This is important for subscription upgrades, as Apple may send DID_RENEW
+	// notification when a user upgrades from monthly to yearly subscription
+	if subscription.ProductID != transactionInfo.ProductID {
+		logging.Infof("ProductID changed during renewal - old: %s, new: %s (possible upgrade/downgrade)",
+			subscription.ProductID, transactionInfo.ProductID)
+		subscription.ProductID = transactionInfo.ProductID
+	}
+
+	// Update TransactionID to the latest transaction
+	subscription.TransactionID = transactionInfo.TransactionID
 	subscription.Status = "active"
 	subscription.ExpiresDate = time.Unix(transactionInfo.ExpiresDateMS/1000, 0)
 	subscription.AutoRenewStatus = transactionInfo.AutoRenewStatus == 1
@@ -655,12 +666,12 @@ func queryDeviceIDFromAppBackend(baseURL, appAccountToken string) (string, error
 
 	resp, err := client.Get(url)
 	if err != nil {
-		return "", fmt.Errorf("failed to query App Backend: %w", err)
+		return "", fmt.Errorf("failed to query app backend: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("App Backend returned status %d", resp.StatusCode)
+		return "", fmt.Errorf("app backend returned status %d", resp.StatusCode)
 	}
 
 	var result map[string]interface{}
