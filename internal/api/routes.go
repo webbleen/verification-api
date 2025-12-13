@@ -53,6 +53,13 @@ func SetupRoutes(r *gin.Engine) {
 			subscription.GET("/history", GetSubscriptionHistory) // Get subscription history
 		}
 
+		// Verify routes (for App Server to verify transactions)
+		verify := api.Group("/verify")
+		verify.Use(middleware.ProjectAuthMiddleware()) // 需要项目认证
+		{
+			verify.POST("/apple", VerifyApple) // 验证 Apple 交易
+		}
+
 		// Webhook routes (no authentication, called by Apple/Google)
 		webhook := r.Group("/webhook")
 		{

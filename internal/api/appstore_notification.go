@@ -176,9 +176,27 @@ func processAppStoreNotification(environment string, c *gin.Context, body []byte
 	logging.Infof("Parsed transaction info - transaction_id: %s, original_transaction_id: %s, product_id: %s, app_account_token: %s",
 		transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, transactionInfo.ProductID, transactionInfo.AppAccountToken)
 
-	// Note: appAccountToken may not be present in webhook notifications
-	// It will be set when the client calls /api/subscription/verify with user_id
-	// The CreateOrUpdateSubscription function will handle binding user_id to existing subscriptions
+	// Note: appAccountToken is a UUID set by the client during purchase (applicationUserName parameter)
+	// We need to query App Backend to get the actual device_id (user_id) from appAccountToken
+	// If appAccountToken is empty, we cannot determine user_id (should not happen in normal flow)
+	
+	// Query device_id from App Backend using appAccountToken
+	if transactionInfo.AppAccountToken != "" && project.WebhookCallbackURL != "" {
+		// Extract base URL from webhook callback URL (e.g., https://api.example.com/webhooks/unionhub -> https://api.example.com)
+		baseURL := extractBaseURL(project.WebhookCallbackURL)
+		if baseURL != "" {
+			deviceID, err := queryDeviceIDFromAppBackend(baseURL, transactionInfo.AppAccountToken)
+			if err != nil {
+				logging.Warnf("Failed to query device_id from App Backend: %v, will use appAccountToken (UUID) as user_id", err)
+				// Fallback: use appAccountToken as user_id (UUID format)
+				// This is acceptable as appAccountToken is already a UUID
+			} else if deviceID != "" {
+				logging.Infof("Resolved device_id from appAccountToken - AppAccountToken: %s, DeviceID: %s", transactionInfo.AppAccountToken, deviceID)
+				// Replace appAccountToken with actual device_id
+				transactionInfo.AppAccountToken = deviceID
+			}
+		}
+	}
 
 	// Handle notification by type
 	subscription, err := handleNotificationByType(notification.NotificationType, transactionInfo, project.ProjectID, notification.Data.Environment)
@@ -413,10 +431,10 @@ func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, enviro
 	logging.Infof("Handling INITIAL_BUY - transaction: %s, original_transaction: %s, product: %s, app_account_token: %s",
 		transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, transactionInfo.ProductID, transactionInfo.AppAccountToken)
 
-	// Use appAccountToken as user_id if available
+	// Use appAccountToken as user_id (set by client during purchase)
 	userID := transactionInfo.AppAccountToken
 	if userID == "" {
-		logging.Infof("No appAccountToken in transaction, user_id will be set when user verifies receipt")
+		logging.Warnf("No appAccountToken in transaction - user_id will be empty. This should not happen if client sets applicationUserName during purchase.")
 	}
 
 	// Find existing subscription by original transaction ID
@@ -596,6 +614,69 @@ func handleExpired(transactionInfo *models.TransactionInfo, projectID string) (*
 		return nil, err
 	}
 	return subscription, nil
+}
+
+// extractBaseURL extracts base URL from webhook callback URL
+// e.g., https://api.example.com/webhooks/unionhub -> https://api.example.com
+func extractBaseURL(webhookURL string) string {
+	// Simple extraction: remove /webhooks/unionhub or similar paths
+	if strings.Contains(webhookURL, "/webhooks/") {
+		parts := strings.Split(webhookURL, "/webhooks/")
+		if len(parts) > 0 {
+			return parts[0]
+		}
+	}
+	// If no /webhooks/ found, try to extract base URL by removing last path segment
+	lastSlash := strings.LastIndex(webhookURL, "/")
+	if lastSlash > 0 {
+		// Find the protocol part (http:// or https://)
+		protocolEnd := strings.Index(webhookURL, "://")
+		if protocolEnd > 0 {
+			// Find the next slash after protocol
+			pathStart := strings.Index(webhookURL[protocolEnd+3:], "/")
+			if pathStart > 0 {
+				return webhookURL[:protocolEnd+3+pathStart]
+			}
+		}
+		return webhookURL[:lastSlash]
+	}
+	return webhookURL
+}
+
+// queryDeviceIDFromAppBackend queries App Backend to get device_id from app_account_token
+func queryDeviceIDFromAppBackend(baseURL, appAccountToken string) (string, error) {
+	url := fmt.Sprintf("%s/api/app-account-token/device-id?app_account_token=%s", baseURL, appAccountToken)
+	
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+	
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", fmt.Errorf("failed to query App Backend: %w", err)
+	}
+	defer resp.Body.Close()
+	
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("App Backend returned status %d", resp.StatusCode)
+	}
+	
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("failed to decode response: %w", err)
+	}
+	
+	if success, ok := result["success"].(bool); !ok || !success {
+		return "", fmt.Errorf("App Backend query failed")
+	}
+	
+	if data, ok := result["data"].(map[string]interface{}); ok {
+		if deviceID, ok := data["device_id"].(string); ok {
+			return deviceID, nil
+		}
+	}
+	
+	return "", fmt.Errorf("device_id not found in response")
 }
 
 // getPlanFromProductID determines plan from product ID

@@ -143,6 +143,7 @@ func autoMigrate() error {
 		&models.Project{},
 		// VerificationCode, VerificationLog, and RateLimit removed - using Redis only
 		&models.Subscription{}, // 订阅表
+		&models.Transaction{},  // 通用交易表
 	)
 }
 
