@@ -443,7 +443,7 @@ func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, enviro
 		// Create new subscription
 		subscription = &models.Subscription{
 			ProjectID:             projectID,
-			UserID:                userID, // Use appAccountToken if available
+			AppAccountToken:       userID, // Use appAccountToken if available
 			Platform:              "ios",
 			Plan:                  getPlanFromProductID(transactionInfo.ProductID),
 			Status:                "active",
@@ -464,7 +464,7 @@ func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, enviro
 		}
 
 		if userID != "" {
-			logging.Infof("Created new subscription with user_id from appAccountToken - transaction: %s, original_transaction: %s, user_id: %s",
+			logging.Infof("Created new subscription with uuid from appAccountToken - transaction: %s, original_transaction: %s, uuid: %s",
 				transactionInfo.TransactionID, transactionInfo.OriginalTransactionID, userID)
 		} else {
 			logging.Infof("Created new subscription - transaction: %s, original_transaction: %s",
@@ -474,10 +474,10 @@ func handleInitialBuy(transactionInfo *models.TransactionInfo, projectID, enviro
 	}
 
 	// Update existing subscription
-	// If subscription has no user_id but we have appAccountToken, bind it
-	if subscription.UserID == "" && userID != "" {
-		subscription.UserID = userID
-		logging.Infof("Binding user_id from appAccountToken to existing subscription - original_transaction: %s, user_id: %s",
+	// If subscription has no appAccountToken but we have one, bind it
+	if subscription.AppAccountToken == "" && userID != "" {
+		subscription.AppAccountToken = userID
+		logging.Infof("Binding appAccountToken to existing subscription - original_transaction: %s, app_account_token: %s",
 			transactionInfo.OriginalTransactionID, userID)
 	}
 
@@ -504,10 +504,10 @@ func handleDidRenew(transactionInfo *models.TransactionInfo, projectID string) (
 		return nil, fmt.Errorf("subscription not found: %w", err)
 	}
 
-	// If subscription has no user_id but we have appAccountToken, bind it
-	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
-		subscription.UserID = transactionInfo.AppAccountToken
-		logging.Infof("Binding user_id from appAccountToken during renewal - original_transaction: %s, user_id: %s",
+	// If subscription has no appAccountToken but we have one, bind it
+	if subscription.AppAccountToken == "" && transactionInfo.AppAccountToken != "" {
+		subscription.AppAccountToken = transactionInfo.AppAccountToken
+		logging.Infof("Binding appAccountToken during renewal - original_transaction: %s, app_account_token: %s",
 			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
@@ -529,10 +529,10 @@ func handleDidFailToRenew(transactionInfo *models.TransactionInfo, projectID str
 		return nil, fmt.Errorf("subscription not found: %w", err)
 	}
 
-	// If subscription has no user_id but we have appAccountToken, bind it
-	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
-		subscription.UserID = transactionInfo.AppAccountToken
-		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s",
+	// If subscription has no appAccountToken but we have one, bind it
+	if subscription.AppAccountToken == "" && transactionInfo.AppAccountToken != "" {
+		subscription.AppAccountToken = transactionInfo.AppAccountToken
+		logging.Infof("Binding appAccountToken - original_transaction: %s, app_account_token: %s",
 			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
@@ -553,10 +553,10 @@ func handleDidCancel(transactionInfo *models.TransactionInfo, projectID string) 
 		return nil, fmt.Errorf("subscription not found: %w", err)
 	}
 
-	// If subscription has no user_id but we have appAccountToken, bind it
-	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
-		subscription.UserID = transactionInfo.AppAccountToken
-		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s",
+	// If subscription has no appAccountToken but we have one, bind it
+	if subscription.AppAccountToken == "" && transactionInfo.AppAccountToken != "" {
+		subscription.AppAccountToken = transactionInfo.AppAccountToken
+		logging.Infof("Binding appAccountToken - original_transaction: %s, app_account_token: %s",
 			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
@@ -577,10 +577,10 @@ func handleDidRefund(transactionInfo *models.TransactionInfo, projectID string) 
 		return nil, fmt.Errorf("subscription not found: %w", err)
 	}
 
-	// If subscription has no user_id but we have appAccountToken, bind it
-	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
-		subscription.UserID = transactionInfo.AppAccountToken
-		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s",
+	// If subscription has no appAccountToken but we have one, bind it
+	if subscription.AppAccountToken == "" && transactionInfo.AppAccountToken != "" {
+		subscription.AppAccountToken = transactionInfo.AppAccountToken
+		logging.Infof("Binding appAccountToken - original_transaction: %s, app_account_token: %s",
 			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 
@@ -601,10 +601,10 @@ func handleExpired(transactionInfo *models.TransactionInfo, projectID string) (*
 		return nil, fmt.Errorf("subscription not found: %w", err)
 	}
 
-	// If subscription has no user_id but we have appAccountToken, bind it
-	if subscription.UserID == "" && transactionInfo.AppAccountToken != "" {
-		subscription.UserID = transactionInfo.AppAccountToken
-		logging.Infof("Binding user_id from appAccountToken - original_transaction: %s, user_id: %s",
+	// If subscription has no appAccountToken but we have one, bind it
+	if subscription.AppAccountToken == "" && transactionInfo.AppAccountToken != "" {
+		subscription.AppAccountToken = transactionInfo.AppAccountToken
+		logging.Infof("Binding appAccountToken - original_transaction: %s, app_account_token: %s",
 			transactionInfo.OriginalTransactionID, transactionInfo.AppAccountToken)
 	}
 

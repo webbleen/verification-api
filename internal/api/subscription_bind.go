@@ -71,10 +71,10 @@ func BindAccount(c *gin.Context) {
 		return
 	}
 
-	// Update user_id
-	subscription.UserID = req.UserID
+	// Update appAccountToken
+	subscription.AppAccountToken = req.UserID
 	if err := database.UpdateSubscription(subscription); err != nil {
-		logging.Errorf("Failed to bind user_id: %v", err)
+		logging.Errorf("Failed to bind appAccountToken: %v", err)
 		c.JSON(http.StatusInternalServerError, BindAccountResponse{
 			Success: false,
 			Message: "Failed to bind account",

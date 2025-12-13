@@ -10,9 +10,9 @@ type Subscription struct {
 	BaseModel
 
 	// 关联字段
-	UserID    string `json:"user_id" gorm:"not null;index"`               // 用户ID（字符串类型，由各 App 定义）
-	ProjectID string `json:"project_id" gorm:"not null;index"`            // 项目ID，关联到project表
-	Platform  string `json:"platform" gorm:"size:20;default:'ios';index"` // 平台：ios 或 android
+	AppAccountToken string `json:"app_account_token" gorm:"not null;index;column:app_account_token"` // App Account Token (UUID 格式)
+	ProjectID       string `json:"project_id" gorm:"not null;index"`                                 // 项目ID，关联到project表
+	Platform        string `json:"platform" gorm:"size:20;default:'ios';index"`                      // 平台：ios 或 android
 
 	// 订阅计划字段
 	Plan string `json:"plan" gorm:"not null;size:50"` // 订阅计划：basic(基础版)、monthly(月度高级版)、yearly(年度高级版)

@@ -152,7 +152,7 @@ func (s *SubscriptionVerificationService) verifyWithApple(receiptData, environme
 
 	// Create subscription model
 	subscription := &models.Subscription{
-		UserID:                userID,
+		AppAccountToken:       userID,
 		ProjectID:             projectID,
 		Platform:              "ios",
 		Plan:                  plan,
@@ -367,7 +367,7 @@ func (s *SubscriptionVerificationService) VerifyAppleTransaction(projectID, sign
 
 	// Create subscription model
 	subscription := &models.Subscription{
-		UserID:                finalUserID,
+		AppAccountToken:       finalUserID,
 		ProjectID:             projectID,
 		Platform:              "ios",
 		Plan:                  plan,

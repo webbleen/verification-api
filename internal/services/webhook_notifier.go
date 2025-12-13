@@ -32,7 +32,7 @@ type WebhookPayload struct {
 	Event                 string `json:"event"`                   // e.g., "subscription.updated"
 	TransactionID         string `json:"transaction_id"`          // App Store/Google Play transaction ID
 	OriginalTransactionID string `json:"original_transaction_id"` // Original transaction ID (for renewals)
-	UserID                string `json:"user_id"`                 // User ID (may be empty if not bound yet)
+	AppAccountToken       string `json:"app_account_token"`       // App Account Token (UUID format)
 	Status                string `json:"status"`                  // Subscription status: active, cancelled, expired, refunded, etc.
 	ProductID             string `json:"product_id"`              // Product ID
 	ExpiresDate           string `json:"expires_date"`            // ISO 8601 format
@@ -53,7 +53,7 @@ func (wn *WebhookNotifier) NotifyAppBackend(callbackURL string, secret string, s
 		Event:                 "subscription.updated",
 		TransactionID:         subscription.TransactionID,
 		OriginalTransactionID: subscription.OriginalTransactionID,
-		UserID:                subscription.UserID,
+		AppAccountToken:       subscription.AppAccountToken,
 		Status:                subscription.Status,
 		ProductID:             subscription.ProductID,
 		ExpiresDate:           subscription.ExpiresDate.Format(time.RFC3339),

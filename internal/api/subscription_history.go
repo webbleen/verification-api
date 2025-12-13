@@ -13,7 +13,7 @@ import (
 // SubscriptionHistoryItem represents a subscription history item
 type SubscriptionHistoryItem struct {
 	ID                  uint      `json:"id"`
-	UserID              string    `json:"user_id"`
+	AppAccountToken     string    `json:"app_account_token"`
 	Platform            string    `json:"platform"`
 	Plan                string    `json:"plan"`
 	Status              string    `json:"status"`
@@ -92,7 +92,7 @@ func GetSubscriptionHistory(c *gin.Context) {
 	for i, sub := range subscriptions {
 		historyItems[i] = SubscriptionHistoryItem{
 			ID:                  sub.ID,
-			UserID:              sub.UserID,
+			AppAccountToken:     sub.AppAccountToken,
 			Platform:            sub.Platform,
 			Plan:                sub.Plan,
 			Status:              sub.Status,
